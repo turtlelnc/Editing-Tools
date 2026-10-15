@@ -1,0 +1,44 @@
+[
+  {
+    "repeat": 0,
+    "range": [
+      54091,
+      54121
+    ],
+    "first_composite_frame_seconds": 4.948565958009567,
+    "first_video_seconds": 0.3952280000085011,
+    "first_audio_seconds": 4.948565958009567,
+    "range_complete_seconds": 4.964505541007384,
+    "exact": true,
+    "audio_peak_rss_bytes": 35405824,
+    "video_peak_rss_bytes": 51970048
+  },
+  {
+    "repeat": 1,
+    "range": [
+      54091,
+      54121
+    ],
+    "first_composite_frame_seconds": 4.765565833004075,
+    "first_video_seconds": 0.2486381250055274,
+    "first_audio_seconds": 4.765565833004075,
+    "range_complete_seconds": 4.781183291008347,
+    "exact": true,
+    "audio_peak_rss_bytes": 35766272,
+    "video_peak_rss_bytes": 52264960
+  },
+  {
+    "repeat": 2,
+    "range": [
+      54091,
+      54121
+    ],
+    "first_composite_frame_seconds": 4.767476958993939,
+    "first_video_seconds": 0.24126920900016557,
+    "first_audio_seconds": 4.767476958993939,
+    "range_complete_seconds": 4.786385499988683,
+    "exact": true,
+    "audio_peak_rss_bytes": 35799040,
+    "video_peak_rss_bytes": 52068352
+  }
+]

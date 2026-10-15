@@ -1,0 +1,21 @@
+{
+  "wall_seconds": 0.812993,
+  "first_output_ready_seconds": 0.747775,
+  "video_pulls": 34,
+  "audio_pulls": 1847,
+  "emitted_frames": 30,
+  "peak_rss_bytes": 53641216,
+  "user_cpu_seconds": 0.797026,
+  "system_cpu_seconds": 0.015083,
+  "observed_first_frame_seconds": 0.7517694590060273,
+  "observed_total_seconds": 0.8620313340070425,
+  "name": "audio_history_video4-60-r0",
+  "history_video_frames": 4,
+  "range": [
+    [
+      1817,
+      1847
+    ]
+  ],
+  "replay_begin": 0
+}

@@ -1,0 +1,185 @@
+{
+  "profile": {
+    "fps": [
+      30,
+      1
+    ],
+    "resolution": [
+      320,
+      180
+    ],
+    "audio_rate": 48000,
+    "channels": 2
+  },
+  "workload": "synthetic repeating six-second mixed scene; feedback reverb and tmix at global root",
+  "reference": {
+    "wall_seconds": 90.922404,
+    "first_output_ready_seconds": 3.200893,
+    "video_pulls": 54180,
+    "audio_pulls": 54180,
+    "emitted_frames": 90,
+    "peak_rss_bytes": 56852480,
+    "user_cpu_seconds": 91.180602,
+    "system_cpu_seconds": 4.226721,
+    "observed_first_frame_seconds": 3.206279292004183,
+    "observed_total_seconds": 90.93434266700933,
+    "name": "full-reference-1800",
+    "history_video_frames": -1,
+    "range": [
+      [
+        1817,
+        1847
+      ],
+      [
+        9054,
+        9084
+      ],
+      [
+        54091,
+        54121
+      ]
+    ],
+    "replay_begin": 0
+  },
+  "trials": [
+    {
+      "wall_seconds": 3.433407,
+      "first_output_ready_seconds": 3.378321,
+      "video_pulls": 1847,
+      "audio_pulls": 1847,
+      "emitted_frames": 30,
+      "peak_rss_bytes": 56541184,
+      "user_cpu_seconds": 3.414788,
+      "system_cpu_seconds": 0.197602,
+      "observed_first_frame_seconds": 3.3838779170037014,
+      "observed_total_seconds": 3.4431929999991553,
+      "name": "full_av-60-r0",
+      "history_video_frames": -1,
+      "range": [
+        [
+          1817,
+          1847
+        ]
+      ],
+      "replay_begin": 0,
+      "exact": true,
+      "target_seconds": 60
+    },
+    {
+      "wall_seconds": 0.812993,
+      "first_output_ready_seconds": 0.747775,
+      "video_pulls": 34,
+      "audio_pulls": 1847,
+      "emitted_frames": 30,
+      "peak_rss_bytes": 53641216,
+      "user_cpu_seconds": 0.797026,
+      "system_cpu_seconds": 0.015083,
+      "observed_first_frame_seconds": 0.7517694590060273,
+      "observed_total_seconds": 0.8620313340070425,
+      "name": "audio_history_video4-60-r0",
+      "history_video_frames": 4,
+      "range": [
+        [
+          1817,
+          1847
+        ]
+      ],
+      "replay_begin": 0,
+      "exact": true,
+      "target_seconds": 60
+    },
+    {
+      "wall_seconds": 15.436599,
+      "first_output_ready_seconds": 15.365,
+      "video_pulls": 9084,
+      "audio_pulls": 9084,
+      "emitted_frames": 30,
+      "peak_rss_bytes": 56590336,
+      "user_cpu_seconds": 15.601167,
+      "system_cpu_seconds": 0.688355,
+      "observed_first_frame_seconds": 15.37010112500866,
+      "observed_total_seconds": 15.444939249995514,
+      "name": "full_av-300-r0",
+      "history_video_frames": -1,
+      "range": [
+        [
+          9054,
+          9084
+        ]
+      ],
+      "replay_begin": 0,
+      "exact": true,
+      "target_seconds": 300
+    },
+    {
+      "wall_seconds": 3.038223,
+      "first_output_ready_seconds": 2.928615,
+      "video_pulls": 34,
+      "audio_pulls": 9084,
+      "emitted_frames": 30,
+      "peak_rss_bytes": 54607872,
+      "user_cpu_seconds": 2.952422,
+      "system_cpu_seconds": 0.033518,
+      "observed_first_frame_seconds": 2.935527917012223,
+      "observed_total_seconds": 3.0473896250041435,
+      "name": "audio_history_video4-300-r0",
+      "history_video_frames": 4,
+      "range": [
+        [
+          9054,
+          9084
+        ]
+      ],
+      "replay_begin": 0,
+      "exact": true,
+      "target_seconds": 300
+    },
+    {
+      "wall_seconds": 91.850015,
+      "first_output_ready_seconds": 91.786966,
+      "video_pulls": 54121,
+      "audio_pulls": 54121,
+      "emitted_frames": 30,
+      "peak_rss_bytes": 55967744,
+      "user_cpu_seconds": 92.587302,
+      "system_cpu_seconds": 4.131134,
+      "observed_first_frame_seconds": 91.83500633299991,
+      "observed_total_seconds": 91.90288745799626,
+      "name": "full_av-1800-r0",
+      "history_video_frames": -1,
+      "range": [
+        [
+          54091,
+          54121
+        ]
+      ],
+      "replay_begin": 0,
+      "exact": true,
+      "target_seconds": 1800
+    },
+    {
+      "wall_seconds": 16.253307,
+      "first_output_ready_seconds": 16.188377,
+      "video_pulls": 34,
+      "audio_pulls": 54121,
+      "emitted_frames": 30,
+      "peak_rss_bytes": 41418752,
+      "user_cpu_seconds": 16.030112,
+      "system_cpu_seconds": 0.093725,
+      "observed_first_frame_seconds": 16.19603691600787,
+      "observed_total_seconds": 16.26477683300618,
+      "name": "audio_history_video4-1800-r0",
+      "history_video_frames": 4,
+      "range": [
+        [
+          54091,
+          54121
+        ]
+      ],
+      "replay_begin": 0,
+      "exact": true,
+      "target_seconds": 1800
+    }
+  ],
+  "exact_failures": []
+}

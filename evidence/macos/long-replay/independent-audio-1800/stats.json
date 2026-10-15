@@ -1,0 +1,21 @@
+{
+  "wall_seconds": 4.98001,
+  "first_output_ready_seconds": 4.968486,
+  "video_pulls": 34,
+  "audio_pulls": 54121,
+  "emitted_frames": 30,
+  "peak_rss_bytes": 35520512,
+  "user_cpu_seconds": 4.74325,
+  "system_cpu_seconds": 0.085671,
+  "observed_first_frame_seconds": 4.973043292004149,
+  "observed_total_seconds": 4.9888232499943115,
+  "name": "independent-audio-1800",
+  "history_video_frames": 4,
+  "range": [
+    [
+      54091,
+      54121
+    ]
+  ],
+  "replay_begin": 0
+}

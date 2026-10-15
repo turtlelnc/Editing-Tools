@@ -1,0 +1,21 @@
+{
+  "wall_seconds": 4.772018,
+  "first_output_ready_seconds": 4.760533,
+  "video_pulls": 34,
+  "audio_pulls": 54121,
+  "emitted_frames": 30,
+  "peak_rss_bytes": 35766272,
+  "user_cpu_seconds": 4.7236,
+  "system_cpu_seconds": 0.041319,
+  "observed_first_frame_seconds": 4.7650609590054955,
+  "observed_total_seconds": 4.780345709004905,
+  "name": "split-audio-r1",
+  "history_video_frames": 4,
+  "range": [
+    [
+      54091,
+      54121
+    ]
+  ],
+  "replay_begin": 0
+}

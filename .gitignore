@@ -24,3 +24,5 @@ local_render/media/*
 !local_render/media/cue2.png
 local_render/results/*
 !local_render/results/.gitkeep
+
+local_render/long_replay_pull

@@ -1,0 +1,29 @@
+{
+  "wall_seconds": 90.922404,
+  "first_output_ready_seconds": 3.200893,
+  "video_pulls": 54180,
+  "audio_pulls": 54180,
+  "emitted_frames": 90,
+  "peak_rss_bytes": 56852480,
+  "user_cpu_seconds": 91.180602,
+  "system_cpu_seconds": 4.226721,
+  "observed_first_frame_seconds": 3.206279292004183,
+  "observed_total_seconds": 90.93434266700933,
+  "name": "full-reference-1800",
+  "history_video_frames": -1,
+  "range": [
+    [
+      1817,
+      1847
+    ],
+    [
+      9054,
+      9084
+    ],
+    [
+      54091,
+      54121
+    ]
+  ],
+  "replay_begin": 0
+}
