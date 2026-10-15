@@ -1,4 +1,4 @@
-/* Sequential, eager MLT pull. Warm-up consumes both video and audio. No encoding. */
+/* Sequential eager pull, optionally restricted to one independent media domain. */
 #include <framework/mlt.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -19,8 +19,10 @@ int main(int argc, char **argv) {
     if (!p || end>mlt_producer_get_length(p)) { fprintf(stderr,"invalid producer or range\n"); return 3; }
     mlt_properties_set_int(MLT_PRODUCER_PROPERTIES(p),"eof",0);
     mlt_producer_set_speed(p,1.0);
-    FILE *sequence=argc==7 ? fopen(argv[6],"r") : NULL;
-    if (argc==7 && !sequence) return 2;
+    int video_only=argc==7 && !strcmp(argv[6],"--video-only");
+    int audio_only=argc==7 && !strcmp(argv[6],"--audio-only");
+    FILE *sequence=argc==7 && !video_only && !audio_only ? fopen(argv[6],"r") : NULL;
+    if (argc==7 && !video_only && !audio_only && !sequence) return 2;
     do {
     if (sequence && fscanf(sequence,"%d %d %d",&replay,&begin,&end)!=3) break;
     if(replay<0 || replay>begin || begin>=end || end>mlt_producer_get_length(p)) return 2;
@@ -34,19 +36,21 @@ int main(int argc, char **argv) {
         mlt_position actual=mlt_frame_get_position(frame);
         uint8_t *image=NULL; mlt_image_format vf=mlt_image_rgba;
         int w=profile->width,h=profile->height;
-        int vr=mlt_frame_get_image(frame,&image,&vf,&w,&h,0);
+        int vr=audio_only ? 0 : mlt_frame_get_image(frame,&image,&vf,&w,&h,0);
         void *audio=NULL; mlt_audio_format af=mlt_audio_f32le;
         int frequency=48000,channels=2;
         int samples=mlt_audio_calculate_frame_samples(mlt_profile_fps(profile),frequency,f);
-        int ar=mlt_frame_get_audio(frame,&audio,&af,&frequency,&channels,&samples);
-        if (vr || ar || !image || !audio || vf!=mlt_image_rgba || af!=mlt_audio_f32le || w!=profile->width || h!=profile->height || frequency!=48000 || channels!=2 || actual!=f) {
+        int ar=video_only ? 0 : mlt_frame_get_audio(frame,&audio,&af,&frequency,&channels,&samples);
+        if (vr || ar || (!audio_only && (!image || vf!=mlt_image_rgba || w!=profile->width || h!=profile->height)) || (!video_only && (!audio || af!=mlt_audio_f32le || frequency!=48000 || channels!=2)) || actual!=f) {
             fprintf(stderr,"frame %d actual=%d vr=%d ar=%d vf=%d af=%d w=%d h=%d rate=%d channels=%d\n",f,actual,vr,ar,vf,af,w,h,frequency,channels); return 5;
         }
         if (f>=begin) {
             uint64_t head[6]={(uint64_t)f,(uint64_t)actual,(uint64_t)mlt_frame_original_position(frame),
                 (uint64_t)mlt_audio_calculate_samples_to_position(mlt_profile_fps(profile),frequency,f),
-                (uint64_t)samples,(uint64_t)w*h*4};
-            write_all(head,sizeof(head));write_all(image,(size_t)w*h*4);write_all(audio,(size_t)samples*channels*4);
+                (uint64_t)samples,audio_only ? 0 : (uint64_t)w*h*4};
+            write_all(head,sizeof(head));
+            if (!audio_only) write_all(image,(size_t)w*h*4);
+            if (!video_only) write_all(audio,(size_t)samples*channels*4);
         }
         mlt_frame_close(frame);
     }

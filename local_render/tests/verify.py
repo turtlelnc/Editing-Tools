@@ -9,7 +9,7 @@ def pcm(b):return struct.unpack('<'+'f'*(len(b)//4),b)
 def sha(b):return hashlib.sha256(b).hexdigest()
 def run_ref(name,timeline):
     print('reference',name,flush=True)
-    fs=list(adapter.render(timeline,0,timeline['frames'],R/name))
+    fs=list(adapter.render(timeline,0,timeline['frames'],R/name,strategy='legacy'))
     meta=[{k:v for k,v in f.items() if k not in ['video','audio']}|{'video_sha256':sha(f['video']),'audio_sha256':sha(f['audio'])} for f in fs]
     (R/name/'frames.json').write_text(json.dumps(meta,indent=2));return fs
 

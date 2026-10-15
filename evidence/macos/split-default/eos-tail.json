@@ -1,0 +1,10 @@
+[
+  {
+    "explicit_pcm_padding": true,
+    "tail_rms": 0.008205826629787203
+  },
+  {
+    "explicit_pcm_padding": false,
+    "tail_rms": 0.0
+  }
+]

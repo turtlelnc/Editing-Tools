@@ -1,0 +1,12 @@
+{
+  "scope": "macOS execution; long timing run serially after full correctness suite; no Linux or real 4K validation",
+  "source_sha256": {
+    "local_render/adapter.py": "94f943dbbbf521ceaff769e67bbb9892352d2499da410ad47a7cc52d4613025b",
+    "local_render/src/mlt_pull.c": "f4935eee0e6fb69c81fef8f63cd1965ca3fa17700dc122450db8850c038b8241",
+    "local_render/tests/split_adapter.py": "04415e4aca615f536254ae562b6e521fd0ab943084a4d5a22157bf647c15a842",
+    "local_render/tests/split_long.py": "cbc6a4e452c8e99acee53f854719666a2502f617259e7c4eb4b2045c6eeabe2a",
+    "local_render/fixture.json": "764c9356f83968d2de1376cccc8370530e810faa9ff8b7c4fe1f981b7aac751f",
+    "evidence/macos/long-replay/full-reference-1800/hashes.json": "ba90db8f6dcc9db60b266a0f74c90a170b85b4d06ebb833159ad9d57326aa4dd"
+  },
+  "reference": "Existing full mixed-graph sequential render hashes from prior experiment; not recomputed in this run"
+}

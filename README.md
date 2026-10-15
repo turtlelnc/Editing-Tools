@@ -56,7 +56,7 @@ bash local_render/cloud_setup.sh
 MLT_SYSTEM=1 python3 local_render/adapter.py local_render/fixture.json 58 66 /tmp/mlt-range-58-66
 ```
 
-区间是半开整数帧 `[58,66)`。输出裸 RGBA、48 kHz 双声道 f32 PCM、全局有理数时间戳、局部 XML 和依赖计划。默认 exact 策略使用新图；实验性的 cold/bounded/fixed 策略可能故意产生差异。
+区间是半开整数帧 `[58,66)`。输出裸 RGBA、48 kHz 双声道 f32 PCM、全局有理数时间戳、音频/视频 XML 和分域依赖计划。默认 exact 策略使用独立的新音频图与视频图，并行重放各自历史；`--strategy legacy` 保留旧混合图对照；实验性的 cold/bounded/fixed 策略可能故意产生差异。
 
 ## 证据边界
 
@@ -66,4 +66,4 @@ MLT_SYSTEM=1 python3 local_render/adapter.py local_render/fixture.json 58 66 /tm
 
 ## 长历史重放筛查
 
-新增 [长时间线报告](LONG_REPLAY_REPORT.md)：30 分钟合成工程中，目标首帧的全音视频历史重放约 91.8 秒；同一混合图省略历史图像约 16.2 秒；真正分离音频图、并行视频有限预热后三次约 4.77–4.95 秒，输出精确一致。只是低分辨率合成负载，不能宣称真实工程或一秒级交互已通过。生产适配器默认行为未改变。
+新增 [长时间线报告](LONG_REPLAY_REPORT.md)：30 分钟合成工程中，目标首帧的全音视频历史重放约 91.8 秒；同一混合图省略历史图像约 16.2 秒；真正分离音频图、并行视频有限预热后三次约 4.77–4.95 秒，输出精确一致。只是低分辨率合成负载，不能宣称真实工程或一秒级交互已通过。此后已将分离策略接入默认适配器；本轮正式路径复验约 5.68–5.76 秒，保持精确一致，见 [分离适配器报告](SPLIT_ADAPTER_REPORT.md)。新增 24 个区间对照及进程回收测试通过。

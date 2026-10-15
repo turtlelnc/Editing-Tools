@@ -1,8 +1,8 @@
 """Minimal MLT local render adapter. No MCP, cache, or serialized DSP state.
 
 The public exact policy preserves absolute positions, creates a fresh graph,
-and eagerly replays the dependency interval. Experimental policies intentionally
-omit history to measure failure. Streams are unencoded RGBA + stereo f32 PCM.
+and independently replays audio history and bounded video history.
+Experimental policies intentionally omit history to measure failure. Streams are unencoded RGBA + stereo f32 PCM.
 """
 from __future__ import annotations
 from pathlib import Path
@@ -160,36 +160,119 @@ def read_exact(f,n):
         out+=b
     return bytes(out)
 
-def render(t:dict,start:int,end:int,directory:Path,policy='exact',warmup=0):
+def render_legacy(t:dict,start:int,end:int,directory:Path,policy='exact',warmup=0):
     directory.mkdir(parents=True,exist_ok=True);p=plan(t,start,end,policy,warmup)
     (directory/'plan.json').write_text(json.dumps(p,indent=2))
     build_xml(t,p,directory/'timeline.xml');profile(t,directory/'profile')
-    cmd=[str(P/'mlt_pull'),str(directory/'timeline.xml'),str(directory/'profile'),str(p['dependency'][0]),str(start),str(end)]
-    (directory/'command.json').write_text(json.dumps(cmd,indent=2))
-    with (directory/'stderr.log').open('w') as log:
-        proc=subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=log,env=environment())
-        try:
-            for i in range(start,end):
-                head=HEADER.unpack(read_exact(proc.stdout,HEADER.size));f,actual,original,sample_start,samples,vbytes=head
-                video=read_exact(proc.stdout,vbytes);audio=read_exact(proc.stdout,samples*2*4)
-                video_pts=Fraction(f*t['fps'][1],t['fps'][0]);audio_pts=Fraction(sample_start,48000)
-                yield {'global_video_pts':[video_pts.numerator,video_pts.denominator],
-                  'global_audio_pts':[audio_pts.numerator,audio_pts.denominator],
-                  'frame':f,'mlt_position':actual,'source_position':original,'sample_start':sample_start,'samples':samples,'video':video,'audio':audio}
+    yield from render_graphs(t,start,end,directory,[('av',directory/'timeline.xml',p['dependency'][0])])
+
+
+def domain_plan(t,start,end,domain):
+    if domain not in ('video','audio'):raise ValueError('Unknown media domain')
+    # Validate BEFORE pruning: unknown effects cannot silently disappear.
+    plan(t,start,end)
+    subset={**t,'effects':[fx for fx in t.get('effects',[])
+             if (fx['type']=='tmix')==(domain=='video')]}
+    p=plan(subset,start,end)
+    p['selected_clips']=[c['id'] for c in t['clips'] if c['id'] in p['selected_clips']
+                         and (c['kind']!='audio')==(domain=='video')]
+    p['source_dependencies']=[x for x in p['source_dependencies'] if x['clip'] in p['selected_clips']]
+    return subset,p
+
+
+def build_audio_xml(t,p,path,assets=P/'media'):
+    # Real PCM padding and MLT blanks remain distinct; never invent tail samples.
+    root=ET.Element('mlt',producer='main');N=t['frames'];selected=set(p['selected_clips'])
+    for c in t['clips']:
+        if c['id'] not in selected:continue
+        speed=Fraction(*c['speed']);asset=str((assets/c['asset']).resolve())
+        node=ET.SubElement(root,'producer',id=c['id'])
+        props(node,{'mlt_service':'avformat' if speed==1 else 'timewarp',
+                    'resource':asset if speed==1 else f'{float(speed)}:{asset}',
+                    'video_index':-1,'audio_index':0,'threads':1,'eof':'pause'})
+    pl=ET.SubElement(root,'playlist',id='audio-track');cursor=0
+    for c in sorted((c for c in t['clips'] if c['id'] in selected),key=lambda c:c['start']):
+        if c['start']>cursor:ET.SubElement(pl,'blank',length=str(c['start']-cursor))
+        ET.SubElement(pl,'entry',producer=c['id'],**{'in':str(c['src_in']),'out':str(c['src_in']+c['end']-c['start']-1)})
+        cursor=c['end']
+    if cursor<N:ET.SubElement(pl,'blank',length=str(N-cursor))
+    main=ET.SubElement(root,'tractor',id='main',**{'in':'0','out':str(N-1)})
+    ET.SubElement(main,'track',producer='audio-track')
+    for fx in t.get('effects',[]):
+        node=ET.SubElement(main,'filter',**{'in':str(fx['anchor']),'out':str(fx['end']-1)})
+        props(node,{'mlt_service':'sox','effect':fx['options']})
+    ET.indent(root);ET.ElementTree(root).write(path,encoding='utf-8',xml_declaration=True)
+
+
+def render_graphs(t,start,end,directory,graphs):
+    """Internal scheduler for validated graphs. Bounded OS pipes provide backpressure.
+
+    Start every child before reading either pipe, so audio replay and video warmup
+    actually run concurrently. A fresh process per graph isolates filter state.
+    Closing the generator or a child failure terminates both children.
+    """
+    sessions=[]
+    try:
+        for domain,xml,replay in graphs:
+            cmd=[str(P/'mlt_pull'),str(xml),str(directory/'profile'),str(replay),str(start),str(end)]
+            if domain!='av':cmd.append('--'+domain+'-only')
+            (directory/(domain+'-command.json')).write_text(json.dumps(cmd,indent=2))
+            logpath=directory/(domain+'-stderr.log');log=logpath.open('w')
+            sessions.append((domain,None,log,logpath))
+            proc=subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=log,env=environment())
+            sessions[-1]=(domain,proc,log,logpath)
+        for i in range(start,end):
+            parts={}
+            for domain,proc,log,logpath in sessions:
+                f,actual,original,sample_start,samples,vbytes=HEADER.unpack(read_exact(proc.stdout,HEADER.size))
+                expected=(i*48000*t['fps'][1]*2+t['fps'][0])//(2*t['fps'][0])
+                next_sample=((i+1)*48000*t['fps'][1]*2+t['fps'][0])//(2*t['fps'][0])
+                if (f,actual,sample_start,samples)!=(i,i,expected,next_sample-expected):
+                    raise RuntimeError('Frame/sample alignment failure')
+                if vbytes!=(0 if domain=='audio' else t['width']*t['height']*4):
+                    raise RuntimeError('Unexpected video payload size')
+                video=read_exact(proc.stdout,vbytes)
+                audio=read_exact(proc.stdout,samples*8) if domain!='video' else b''
+                parts[domain]={'frame':f,'mlt_position':actual,'source_position':original,
+                              'sample_start':sample_start,'samples':samples,'video':video,'audio':audio}
+            out=parts['av'] if 'av' in parts else {**parts['video'],'audio':parts['audio']['audio']}
+            vp=Fraction(i*t['fps'][1],t['fps'][0]);ap=Fraction(out['sample_start'],48000)
+            yield {**out,'global_video_pts':[vp.numerator,vp.denominator],'global_audio_pts':[ap.numerator,ap.denominator]}
+        for domain,proc,log,logpath in sessions:
             if proc.stdout.read(1):raise RuntimeError('Unexpected extra output')
-            if proc.wait(timeout=10):raise RuntimeError(f'MLT pull failed: see {directory}/stderr.log')
-            errors=(directory/'stderr.log').read_text()
-            if any(x in errors.lower() for x in ['failed','cannot','not found','error','unexpected']):raise RuntimeError(f'MLT diagnostic failure: {errors[:400]}')
-        finally:
-            proc.stdout.close()
-            if proc.poll() is None:proc.kill();proc.wait()
+            if proc.wait(timeout=10):raise RuntimeError(f'MLT pull failed: see {logpath}')
+            log.flush();errors=logpath.read_text()
+            if any(x in errors.lower() for x in ['failed','cannot','not found','error','unexpected']):
+                raise RuntimeError(f'MLT diagnostic failure: {errors[:400]}')
+    finally:
+        for domain,proc,log,logpath in sessions:
+            if proc is not None:
+                proc.stdout.close()
+                if proc.poll() is None:proc.kill()
+                proc.wait()
+            log.close()
+
+
+def render(t:dict,start:int,end:int,directory:Path,policy='exact',warmup=0,*,strategy='split'):
+    """Exact requests split media domains by default; legacy remains the oracle."""
+    if strategy not in ('split','legacy'):raise ValueError('Unknown render strategy')
+    if strategy=='legacy' or policy!='exact':
+        yield from render_legacy(t,start,end,directory,policy,warmup);return
+    p=plan(t,start,end,policy,warmup);directory.mkdir(parents=True,exist_ok=True)
+    domains={d:domain_plan(t,start,end,d) for d in ('video','audio')}
+    p['strategy']='split';p['domains']={d:dp for d,(_,dp) in domains.items()}
+    (directory/'plan.json').write_text(json.dumps(p,indent=2));profile(t,directory/'profile')
+    for d,(subset,dp) in domains.items():
+        (build_xml if d=='video' else build_audio_xml)(subset,dp,directory/(d+'.xml'))
+    yield from render_graphs(t,start,end,directory,[(d,directory/(d+'.xml'),dp['dependency'][0]) for d,(_,dp) in domains.items()])
 
 if __name__=='__main__':
     import argparse
     ap=argparse.ArgumentParser();ap.add_argument('timeline',type=Path);ap.add_argument('start',type=int);ap.add_argument('end',type=int);ap.add_argument('output',type=Path)
+    ap.add_argument('--strategy',choices=['split','legacy'],default='split')
     args=ap.parse_args();t=json.loads(args.timeline.read_text());args.output.mkdir(parents=True,exist_ok=True)
     stamps=[]
     with (args.output/'video.rgba').open('wb') as v,(args.output/'audio.f32le').open('wb') as a:
-        for f in render(t,args.start,args.end,args.output):
+        for f in render(t,args.start,args.end,args.output,strategy=args.strategy):
             v.write(f.pop('video'));a.write(f.pop('audio'));stamps.append(f)
     (args.output/'timestamps.json').write_text(json.dumps({'fps':t['fps'],'sample_rate':48000,'channels':2,'format':'rgba + interleaved f32le','frames':stamps},indent=2))

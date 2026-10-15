@@ -33,7 +33,7 @@ for name,args in setup:
  r=command(name,args)
  if r['exit']:print(r);sys.exit(1)
 # Each worker has distinct output directories; no shared mutable renderer state.
-tasks=[('verify',[sys.executable,str(P/'tests/verify.py')]),('mux',[sys.executable,str(P/'tests/mux_roundtrip.py')]),('contracts',[sys.executable,str(P/'tests/contracts.py')]),('eos',[sys.executable,str(P/'tests/eos_tail.py')]),('clock',[str(P/'sample_clock')])]
+tasks=[('split-adapter',[sys.executable,str(P/'tests/split_adapter.py')]),('verify',[sys.executable,str(P/'tests/verify.py')]),('mux',[sys.executable,str(P/'tests/mux_roundtrip.py')]),('contracts',[sys.executable,str(P/'tests/contracts.py')]),('eos',[sys.executable,str(P/'tests/eos_tail.py')]),('clock',[str(P/'sample_clock')])]
 with ThreadPoolExecutor(max_workers=4) as pool:results=list(pool.map(lambda task:command(*task),tasks))
 # Clock stdout is a JSON evidence file, not a pass/fail for the unsupported interval.
 (R/'sample-clock.json').write_text((R/'clock.run.log').read_text())

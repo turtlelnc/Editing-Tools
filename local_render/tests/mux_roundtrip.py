@@ -12,7 +12,7 @@ for name,begin,end in [('full',0,180),('transition',58,66),('subtitle-speed',129
  d=full if name=='full' else R/f'mux-{name}';d.mkdir(exist_ok=True)
  if True:
   with (d/'video.rgba').open('wb') as v,(d/'audio.f32le').open('wb') as a:
-   for f in adapter.render(t,begin,end,d):v.write(f['video']);a.write(f['audio'])
+   for f in adapter.render(t,begin,end,d,strategy='legacy' if name=='full' else 'split'):v.write(f['video']);a.write(f['audio'])
  dest=d/'render.nut'
  ff(['-f','rawvideo','-pixel_format','rgba','-video_size','320x180','-framerate','30','-i',str(d/'video.rgba'),'-f','f32le','-ar','48000','-ac','2','-i',str(d/'audio.f32le'),'-map','0:v:0','-map','1:a:0','-c:v','ffv1','-pix_fmt','bgra','-c:a','pcm_f32le',str(dest)])
  video=ff(['-i',str(dest),'-map','0:v:0','-pix_fmt','rgba','-fps_mode','passthrough','-f','rawvideo','-']);audio=ff(['-i',str(dest),'-map','0:a:0','-c:a','pcm_f32le','-f','f32le','-'])
