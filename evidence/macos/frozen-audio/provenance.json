@@ -1,0 +1,15 @@
+{
+  "scope": "Local macOS execution; fresh full mixed AV oracle for 54180 frames; sequential timing; warm OS file-cache reads after whole-file integrity verification",
+  "source_sha256": {
+    "local_render/frozen_audio.py": "1e4d77c88b97136e933991197527991456aed0afd2d3e9d7f82453725beab310",
+    "local_render/adapter.py": "74f093d9479f593ddbf9b724296cc0f237310089234cca16d5ecf5a54ef6f020",
+    "local_render/tests/frozen_audio.py": "c985c89316a39345b70c7de3fa85f9216616f2ab738821876fab489aae8cb6f8",
+    "local_render/tests/frozen_contracts.py": "e0edef7aaf36da369770259827aefb88a9c5676a7cde98badd05ae513a6a8471",
+    "local_render/tests/frozen_long.py": "0398008194f677db056838d9d4eeeed62b71c239db09cd5caac8e23f6f92a896",
+    "local_render/tests/long_replay_pull.c": "851abb4c20fac27b3226b6c10e75a50dd4674121946502dd9e9114a24f2eccab",
+    "local_render/run_all.py": "657c76d8f89606dab0e932f8e72567fa7470b5f332bc3ea35ceef5abfb3cb410",
+    "local_render/fixture.json": "764c9356f83968d2de1376cccc8370530e810faa9ff8b7c4fe1f981b7aac751f"
+  },
+  "artifact_cleanup": "All short and long PCM artifacts created by the tests removed; only statistics, hashes, XML and logs retained locally",
+  "reference_helper": "Independently pulls both media domains for every frame, emits only sampled windows; not preprocessed PCM as its own oracle"
+}

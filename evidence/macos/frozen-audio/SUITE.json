@@ -1,0 +1,104 @@
+{
+  "cleanup": {
+    "removed": [
+      {
+        "file": "local_render/results/mux-full/video.rgba",
+        "bytes": 41472000
+      },
+      {
+        "file": "local_render/results/mux-full/audio.f32le",
+        "bytes": 2304000
+      },
+      {
+        "file": "local_render/results/mux-transition/video.rgba",
+        "bytes": 1843200
+      },
+      {
+        "file": "local_render/results/mux-transition/audio.f32le",
+        "bytes": 102400
+      },
+      {
+        "file": "local_render/results/mux-subtitle-speed/video.rgba",
+        "bytes": 1612800
+      },
+      {
+        "file": "local_render/results/mux-subtitle-speed/audio.f32le",
+        "bytes": 89600
+      },
+      {
+        "file": "local_render/results/mux-reverb-tail/video.rgba",
+        "bytes": 3456000
+      },
+      {
+        "file": "local_render/results/mux-reverb-tail/audio.f32le",
+        "bytes": 192000
+      }
+    ],
+    "bytes_reclaimed": 51072000
+  },
+  "builds": [
+    {
+      "task": "build-pull",
+      "exit": 0,
+      "seconds": 0.523269084005733
+    },
+    {
+      "task": "build-subtitle",
+      "exit": 0,
+      "seconds": 1.5458977080124896
+    },
+    {
+      "task": "build-clock",
+      "exit": 0,
+      "seconds": 0.5233217909990344
+    }
+  ],
+  "tests": [
+    {
+      "task": "frozen-contracts",
+      "exit": 0,
+      "seconds": 0.10722454098868184
+    },
+    {
+      "task": "frozen-audio",
+      "exit": 0,
+      "seconds": 5.643029291008133
+    },
+    {
+      "task": "split-adapter",
+      "exit": 0,
+      "seconds": 7.657417541005998
+    },
+    {
+      "task": "verify",
+      "exit": 0,
+      "seconds": 28.587674374997732
+    },
+    {
+      "task": "mux",
+      "exit": 0,
+      "seconds": 2.131298041989794
+    },
+    {
+      "task": "contracts",
+      "exit": 0,
+      "seconds": 0.044572375001735054
+    },
+    {
+      "task": "eos",
+      "exit": 0,
+      "seconds": 0.5911666250030976
+    },
+    {
+      "task": "clock",
+      "exit": 0,
+      "seconds": 0.004819249996216968
+    },
+    {
+      "task": "session",
+      "exit": 0,
+      "seconds": 5.173658333005733
+    }
+  ],
+  "passed": true
+}

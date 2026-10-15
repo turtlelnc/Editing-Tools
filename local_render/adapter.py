@@ -235,7 +235,7 @@ def render_graphs(t,start,end,directory,graphs):
                 audio=read_exact(proc.stdout,samples*8) if domain!='video' else b''
                 parts[domain]={'frame':f,'mlt_position':actual,'source_position':original,
                               'sample_start':sample_start,'samples':samples,'video':video,'audio':audio}
-            out=parts['av'] if 'av' in parts else {**parts['video'],'audio':parts['audio']['audio']}
+            out=next(iter(parts.values())) if len(parts)==1 else {**parts['video'],'audio':parts['audio']['audio']}
             vp=Fraction(i*t['fps'][1],t['fps'][0]);ap=Fraction(out['sample_start'],48000)
             yield {**out,'global_video_pts':[vp.numerator,vp.denominator],'global_audio_pts':[ap.numerator,ap.denominator]}
         for domain,proc,log,logpath in sessions:
