@@ -1,0 +1,123 @@
+[
+  {
+    "case": "combined",
+    "mode": "seek_only",
+    "video_mismatch_frames": [
+      58,
+      59,
+      60,
+      61
+    ],
+    "audio_mismatch_frames": [
+      58,
+      59,
+      60,
+      61,
+      62,
+      63,
+      64,
+      65,
+      66,
+      67,
+      68,
+      69,
+      70,
+      71,
+      72,
+      73,
+      74,
+      75
+    ]
+  },
+  {
+    "case": "combined",
+    "mode": "bounded",
+    "video_mismatch_frames": [],
+    "audio_mismatch_frames": [
+      58,
+      59,
+      60,
+      61,
+      62,
+      63,
+      64,
+      65,
+      66,
+      67,
+      68,
+      69,
+      70,
+      71,
+      72,
+      73,
+      74,
+      75
+    ]
+  },
+  {
+    "case": "combined",
+    "mode": "replay_dirty_anchor",
+    "video_mismatch_frames": [],
+    "audio_mismatch_frames": [
+      58,
+      59,
+      60,
+      61,
+      62,
+      63,
+      64,
+      65,
+      66,
+      67,
+      68,
+      69,
+      70,
+      71,
+      72,
+      73,
+      74,
+      75
+    ]
+  },
+  {
+    "case": "temporal",
+    "mode": "seek_only",
+    "video_mismatch_frames": [
+      58,
+      59,
+      60,
+      61
+    ],
+    "audio_mismatch_frames": []
+  },
+  {
+    "case": "temporal",
+    "mode": "bounded",
+    "video_mismatch_frames": [],
+    "audio_mismatch_frames": []
+  },
+  {
+    "case": "temporal",
+    "mode": "replay_dirty_anchor",
+    "video_mismatch_frames": [],
+    "audio_mismatch_frames": []
+  },
+  {
+    "case": "stateless",
+    "mode": "seek_only",
+    "video_mismatch_frames": [],
+    "audio_mismatch_frames": []
+  },
+  {
+    "case": "stateless",
+    "mode": "bounded",
+    "video_mismatch_frames": [],
+    "audio_mismatch_frames": []
+  },
+  {
+    "case": "stateless",
+    "mode": "replay_dirty_anchor",
+    "video_mismatch_frames": [],
+    "audio_mismatch_frames": []
+  }
+]

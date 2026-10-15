@@ -1,0 +1,58 @@
+{
+  "mlt-single": {
+    "decode_exit": 0,
+    "frames": 120,
+    "expected_frames": 120,
+    "luma_different_frames": 120,
+    "luma_exact": false,
+    "file_bytes": 3043650
+  },
+  "ges-single": {
+    "decode_exit": 0,
+    "frames": 121,
+    "expected_frames": 120,
+    "luma_different_frames": 0,
+    "luma_exact": false,
+    "file_bytes": 3119626
+  },
+  "mlt-8": {
+    "decode_exit": 0,
+    "frames": 120,
+    "expected_frames": 120,
+    "luma_different_frames": 120,
+    "luma_exact": false,
+    "file_bytes": 3043650
+  },
+  "ges-8": {
+    "decode_exit": 0,
+    "frames": 121,
+    "expected_frames": 120,
+    "luma_different_frames": 0,
+    "luma_exact": false,
+    "file_bytes": 3119626
+  },
+  "mlt-1000": {
+    "decode_exit": 0,
+    "frames": 1000,
+    "expected_frames": 1000,
+    "luma_different_frames": 1000,
+    "luma_exact": false,
+    "file_bytes": 22483327
+  },
+  "ges-100": {
+    "decode_exit": 0,
+    "frames": 101,
+    "expected_frames": 100,
+    "luma_different_frames": 0,
+    "luma_exact": false,
+    "file_bytes": 2237692
+  },
+  "ges-1000-isolated": {
+    "decode_exit": 0,
+    "frames": 1001,
+    "expected_frames": 1000,
+    "luma_different_frames": 0,
+    "luma_exact": false,
+    "file_bytes": 22157964
+  }
+}

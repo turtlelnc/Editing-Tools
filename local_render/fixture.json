@@ -1,0 +1,127 @@
+{
+  "version": 1,
+  "fps": [
+    30,
+    1
+  ],
+  "width": 320,
+  "height": 180,
+  "frames": 180,
+  "clips": [
+    {
+      "id": "a",
+      "track": 1,
+      "start": 0,
+      "end": 90,
+      "src_in": 0,
+      "speed": [
+        1,
+        1
+      ],
+      "asset": "a.mkv",
+      "kind": "video"
+    },
+    {
+      "id": "b",
+      "track": 2,
+      "start": 60,
+      "end": 150,
+      "src_in": 6,
+      "speed": [
+        3,
+        2
+      ],
+      "asset": "b.mkv",
+      "kind": "video"
+    },
+    {
+      "id": "overlay",
+      "track": 3,
+      "start": 20,
+      "end": 145,
+      "src_in": 0,
+      "speed": [
+        1,
+        1
+      ],
+      "asset": "overlay.mkv",
+      "kind": "video"
+    },
+    {
+      "id": "cue1",
+      "track": 4,
+      "start": 32,
+      "end": 76,
+      "src_in": 0,
+      "speed": [
+        1,
+        1
+      ],
+      "asset": "cue1.mkv",
+      "kind": "subtitle",
+      "text": "LOCAL RENDER • cue A"
+    },
+    {
+      "id": "cue2",
+      "track": 4,
+      "start": 85,
+      "end": 132,
+      "src_in": 0,
+      "speed": [
+        1,
+        1
+      ],
+      "asset": "cue2.mkv",
+      "kind": "subtitle",
+      "text": "Transition → speed 1.5×"
+    },
+    {
+      "id": "audio",
+      "track": 5,
+      "start": 0,
+      "end": 90,
+      "src_in": 0,
+      "speed": [
+        1,
+        1
+      ],
+      "asset": "audio.wav",
+      "kind": "audio"
+    },
+    {
+      "id": "tail_padding",
+      "track": 5,
+      "start": 90,
+      "end": 180,
+      "src_in": 0,
+      "speed": [
+        1,
+        1
+      ],
+      "asset": "silence.wav",
+      "kind": "audio"
+    }
+  ],
+  "crossfade": {
+    "a": "a",
+    "b": "b",
+    "start": 60,
+    "end": 90
+  },
+  "effects": [
+    {
+      "id": "temporal",
+      "type": "tmix",
+      "frames": 5,
+      "anchor": 0,
+      "end": 180
+    },
+    {
+      "id": "reverb",
+      "type": "sox.reverb",
+      "options": "reverb 70 50 100 100 10 0",
+      "anchor": 0,
+      "end": 180
+    }
+  ]
+}

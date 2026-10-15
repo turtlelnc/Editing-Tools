@@ -1,0 +1,7 @@
+{
+  "reference_frames": 120,
+  "mlt_frames": 120,
+  "luma_exact": true,
+  "different_luma_frames": 0,
+  "yuv420p_all_planes_exact": false
+}

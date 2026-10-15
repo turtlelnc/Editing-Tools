@@ -1,0 +1,89 @@
+{
+  "cleanup": {
+    "removed": [
+      {
+        "file": "local_render/results/mux-full/video.rgba",
+        "bytes": 41472000
+      },
+      {
+        "file": "local_render/results/mux-full/audio.f32le",
+        "bytes": 2304000
+      },
+      {
+        "file": "local_render/results/mux-transition/video.rgba",
+        "bytes": 1843200
+      },
+      {
+        "file": "local_render/results/mux-transition/audio.f32le",
+        "bytes": 102400
+      },
+      {
+        "file": "local_render/results/mux-subtitle-speed/video.rgba",
+        "bytes": 1612800
+      },
+      {
+        "file": "local_render/results/mux-subtitle-speed/audio.f32le",
+        "bytes": 89600
+      },
+      {
+        "file": "local_render/results/mux-reverb-tail/video.rgba",
+        "bytes": 3456000
+      },
+      {
+        "file": "local_render/results/mux-reverb-tail/audio.f32le",
+        "bytes": 192000
+      }
+    ],
+    "bytes_reclaimed": 51072000
+  },
+  "builds": [
+    {
+      "task": "build-pull",
+      "exit": 0,
+      "seconds": 0.6112879169959342
+    },
+    {
+      "task": "build-subtitle",
+      "exit": 0,
+      "seconds": 1.5834454160067253
+    },
+    {
+      "task": "build-clock",
+      "exit": 0,
+      "seconds": 0.6113100840011612
+    }
+  ],
+  "tests": [
+    {
+      "task": "verify",
+      "exit": 0,
+      "seconds": 30.419148041997687
+    },
+    {
+      "task": "mux",
+      "exit": 0,
+      "seconds": 2.5900809580052737
+    },
+    {
+      "task": "contracts",
+      "exit": 0,
+      "seconds": 0.04377987500629388
+    },
+    {
+      "task": "eos",
+      "exit": 0,
+      "seconds": 1.1452822499995818
+    },
+    {
+      "task": "clock",
+      "exit": 0,
+      "seconds": 0.005746916998759843
+    },
+    {
+      "task": "session",
+      "exit": 0,
+      "seconds": 5.169663958993624
+    }
+  ],
+  "passed": true
+}

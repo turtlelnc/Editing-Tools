@@ -1,0 +1,113 @@
+[
+  {
+    "items": 10000,
+    "tracks": 20,
+    "keyframes": 100000,
+    "markers": 10000,
+    "rounds": 1000,
+    "query_ms": {
+      "p50": 0.04562499816529453,
+      "p95": 0.07837500015739352,
+      "p99": 0.08483300189254805
+    },
+    "ripple_ms": {
+      "p50": 0.7085830002324656,
+      "p99": 10.481457997229882
+    },
+    "undo_ms": {
+      "p50": 0.7019580007181503,
+      "p99": 10.339542001020163,
+      "first100": 1.5800378801941406,
+      "last100": 1.4714062696293695
+    },
+    "batch100_ms": {
+      "p95": 0.4069579954375513
+    },
+    "wal_peak_bytes": 4474352,
+    "wal_file_growth_bytes_p99": 57680,
+    "checkpoint_ms_max": 0.5600829972536303,
+    "db_bytes": 2154496,
+    "oplog_bytes": 44596,
+    "peak_process_rss_bytes": 25870336,
+    "limitations": [
+      "WAL file growth is not write I/O; reused WAL pages are not counted",
+      "No product cache implementation; cache reuse not measured",
+      "100-op batch is parameter updates, not 100 ripples",
+      "Undo roundtrip immediately per loop, not long undo chain"
+    ]
+  },
+  {
+    "items": 100000,
+    "tracks": 20,
+    "keyframes": 1000000,
+    "markers": 100000,
+    "rounds": 1000,
+    "query_ms": {
+      "p50": 0.570500000321772,
+      "p95": 1.0032499994849786,
+      "p99": 1.4982499997131526
+    },
+    "ripple_ms": {
+      "p50": 7.484375004423782,
+      "p99": 165.1795840007253
+    },
+    "undo_ms": {
+      "p50": 7.344165998802055,
+      "p99": 165.13879100239137,
+      "first100": 16.262692919772235,
+      "last100": 18.817036299951724
+    },
+    "batch100_ms": {
+      "p95": 0.751208994188346
+    },
+    "wal_peak_bytes": 8478992,
+    "wal_file_growth_bytes_p99": 0,
+    "checkpoint_ms_max": 4.19970799703151,
+    "db_bytes": 22065152,
+    "oplog_bytes": 46628,
+    "peak_process_rss_bytes": 25919488,
+    "limitations": [
+      "WAL file growth is not write I/O; reused WAL pages are not counted",
+      "No product cache implementation; cache reuse not measured",
+      "100-op batch is parameter updates, not 100 ripples",
+      "Undo roundtrip immediately per loop, not long undo chain"
+    ]
+  },
+  {
+    "items": 100000,
+    "tracks": 50,
+    "keyframes": 1000000,
+    "markers": 100000,
+    "rounds": 1000,
+    "query_ms": {
+      "p50": 0.356625001586508,
+      "p95": 0.6615829988732003,
+      "p99": 0.9691669984022155
+    },
+    "ripple_ms": {
+      "p50": 6.494959001429379,
+      "p99": 283.11508300248533
+    },
+    "undo_ms": {
+      "p50": 6.460124997829553,
+      "p99": 287.3320409998996,
+      "first100": 22.33605251989502,
+      "last100": 22.737012889847392
+    },
+    "batch100_ms": {
+      "p95": 0.9296250063925982
+    },
+    "wal_peak_bytes": 8590232,
+    "wal_file_growth_bytes_p99": 0,
+    "checkpoint_ms_max": 3.2628330009174533,
+    "db_bytes": 22126592,
+    "oplog_bytes": 69990,
+    "peak_process_rss_bytes": 25919488,
+    "limitations": [
+      "WAL file growth is not write I/O; reused WAL pages are not counted",
+      "No product cache implementation; cache reuse not measured",
+      "100-op batch is parameter updates, not 100 ripples",
+      "Undo roundtrip immediately per loop, not long undo chain"
+    ]
+  }
+]
