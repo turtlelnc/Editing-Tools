@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <optional>
 
 #include "model/timeline.h"
 #include "render/render.h"
@@ -35,6 +36,13 @@ json props(json p, std::vector<std::string> required = {}) {
 const json kStr = {{"type", "string"}};
 const json kNum = {{"type", "number"}};
 const json kInt = {{"type", "integer"}};
+const json kBool = {{"type", "boolean"}};
+
+template <class T>
+std::optional<T> opt(const json& a, const char* key) {
+  if (!a.contains(key) || a[key].is_null()) return std::nullopt;
+  return a[key].get<T>();
+}
 
 // Runs fn, translating model-level errors into tool errors so the model can recover.
 template <class F>
@@ -143,6 +151,79 @@ void register_timeline_tools(mcp::Server& server) {
                    [s](const json& a) {
                      return guarded([&] {
                        s->get().delete_clip(a.at("clip_id"));
+                       s->save();
+                       return s->get().to_json();
+                     });
+                   }});
+
+  server.add_tool({"add_music",
+                   "Add background music (any file with audio) starting at `start` seconds on the timeline. "
+                   "in/out select the source range (default: whole file). volume_db is gain (negative = quieter).",
+                   props({{"path", kStr}, {"start", kNum}, {"in", kNum}, {"out", kNum}, {"volume_db", kNum}}, {"path"}),
+                   [s](const json& a) {
+                     return guarded([&] {
+                       auto& p = s->get();
+                       auto asset = p.add_asset(asset_from_probe(probe_media(absolute(a.at("path")))));
+                       p.add_music(asset.id, a.value("in", 0.0), a.value("out", asset.duration), a.value("start", 0.0),
+                                   a.value("volume_db", 0.0));
+                       s->save();
+                       return p.to_json();
+                     });
+                   }});
+
+  server.add_tool({"update_music", "Change a music clip's source range or timeline start (seconds).",
+                   props({{"music_id", kStr}, {"in", kNum}, {"out", kNum}, {"start", kNum}}, {"music_id"}),
+                   [s](const json& a) {
+                     return guarded([&] {
+                       s->get().update_music(a.at("music_id"), opt<double>(a, "in"), opt<double>(a, "out"),
+                                             opt<double>(a, "start"));
+                       s->save();
+                       return s->get().to_json();
+                     });
+                   }});
+
+  server.add_tool({"delete_music", "Remove a music clip.", props({{"music_id", kStr}}, {"music_id"}),
+                   [s](const json& a) {
+                     return guarded([&] {
+                       s->get().delete_music(a.at("music_id"));
+                       s->save();
+                       return s->get().to_json();
+                     });
+                   }});
+
+  server.add_tool({"set_audio",
+                   "Set sound properties of a video clip (id like c1) or music clip (id like m1): volume_db gain "
+                   "[-60,24], fade_in/fade_out seconds, denoise on/off. Omitted fields are unchanged.",
+                   props({{"id", kStr}, {"volume_db", kNum}, {"fade_in", kNum}, {"fade_out", kNum}, {"denoise", kBool}},
+                         {"id"}),
+                   [s](const json& a) {
+                     return guarded([&] {
+                       s->get().set_audio(a.at("id"), {opt<double>(a, "volume_db"), opt<double>(a, "fade_in"),
+                                                       opt<double>(a, "fade_out"), opt<bool>(a, "denoise")});
+                       s->save();
+                       return s->get().to_json();
+                     });
+                   }});
+
+  server.add_tool({"auto_duck",
+                   "Automatically lower all music while the video clips' own audio (speech) is playing. "
+                   "strength: light | medium | strong.",
+                   props({{"enabled", kBool}, {"strength", kStr}}),
+                   [s](const json& a) {
+                     return guarded([&] {
+                       s->get().set_duck(a.value("enabled", true), a.value("strength", "medium"));
+                       s->save();
+                       return s->get().to_json();
+                     });
+                   }});
+
+  server.add_tool({"normalize_loudness",
+                   "Normalize the final mix to a target integrated loudness (EBU R128). Default -16 LUFS "
+                   "(online video), true peak -1.5 dB.",
+                   props({{"enabled", kBool}, {"lufs", kNum}, {"true_peak", kNum}}),
+                   [s](const json& a) {
+                     return guarded([&] {
+                       s->get().set_loudnorm(a.value("enabled", true), a.value("lufs", -16.0), a.value("true_peak", -1.5));
                        s->save();
                        return s->get().to_json();
                      });
