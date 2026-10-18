@@ -2,6 +2,7 @@
 
 #include <fcntl.h>
 #include <poll.h>
+#include <signal.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -53,6 +54,64 @@ ProcResult run(const std::vector<std::string>& argv) {
       }
     }
   }
+  int status = 0;
+  waitpid(pid, &status, 0);
+  r.exit_code = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+  return r;
+}
+
+StreamResult run_streaming(const std::vector<std::string>& argv, const std::function<bool(const char*, size_t)>& on_stdout,
+                           const std::function<bool()>& should_cancel) {
+  if (argv.empty()) throw std::invalid_argument("empty argv");
+  int out_pipe[2], err_pipe[2];
+  if (pipe(out_pipe) != 0 || pipe(err_pipe) != 0) throw std::runtime_error("pipe failed");
+
+  pid_t pid = fork();
+  if (pid < 0) throw std::runtime_error("fork failed");
+  if (pid == 0) {
+    dup2(out_pipe[1], STDOUT_FILENO);
+    dup2(err_pipe[1], STDERR_FILENO);
+    close(out_pipe[0]); close(out_pipe[1]);
+    close(err_pipe[0]); close(err_pipe[1]);
+    int devnull = open("/dev/null", O_RDONLY);
+    if (devnull >= 0) dup2(devnull, STDIN_FILENO);
+    std::vector<char*> args;
+    for (auto& a : argv) args.push_back(const_cast<char*>(a.c_str()));
+    args.push_back(nullptr);
+    execvp(args[0], args.data());
+    _exit(127);
+  }
+  close(out_pipe[1]);
+  close(err_pipe[1]);
+
+  StreamResult r;
+  pollfd fds[2] = {{out_pipe[0], POLLIN, 0}, {err_pipe[0], POLLIN, 0}};
+  int open_fds = 2;
+  char buf[65536];
+  while (open_fds > 0) {
+    if (should_cancel && should_cancel()) { r.cancelled = true; break; }
+    int ready = poll(fds, 2, 100);
+    if (ready < 0) break;
+    for (int i = 0; i < 2; ++i) {
+      if (fds[i].fd < 0 || !(fds[i].revents & (POLLIN | POLLHUP))) continue;
+      ssize_t n = read(fds[i].fd, buf, sizeof buf);
+      if (n > 0) {
+        if (i == 0) {
+          if (on_stdout && !on_stdout(buf, static_cast<size_t>(n))) { r.cancelled = true; }
+        } else if (r.err.size() < 200000) {
+          r.err.append(buf, static_cast<size_t>(n));
+        }
+      } else {
+        close(fds[i].fd);
+        fds[i].fd = -1;
+        --open_fds;
+      }
+    }
+    if (r.cancelled) break;
+  }
+  if (r.cancelled) kill(pid, SIGTERM);
+  for (auto& f : fds)
+    if (f.fd >= 0) close(f.fd);
   int status = 0;
   waitpid(pid, &status, 0);
   r.exit_code = WIFEXITED(status) ? WEXITSTATUS(status) : -1;

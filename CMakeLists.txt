@@ -33,11 +33,32 @@ target_compile_options(et_core PRIVATE -Wall -Wextra)
 add_executable(editing-tools src/main.cpp)
 target_link_libraries(editing-tools PRIVATE et_core)
 
+# editing-agent: the standalone AI editor (an agent loop + model providers on top of the same tools).
+add_library(et_agent
+  src/agent/http.cpp
+  src/agent/openai_chat.cpp
+  src/agent/anthropic.cpp
+  src/agent/openai_responses.cpp
+  src/agent/codex_auth.cpp
+  src/agent/providers.cpp
+  src/agent/policy.cpp
+  src/agent/toolbox.cpp
+  src/agent/prompt.cpp
+  src/agent/loop.cpp
+  src/agent/session.cpp
+  src/agent/review.cpp)
+target_include_directories(et_agent PUBLIC src)
+target_link_libraries(et_agent PUBLIC et_core nlohmann_json::nlohmann_json)
+target_compile_options(et_agent PRIVATE -Wall -Wextra)
+
+add_executable(editing-agent src/agent/main.cpp)
+target_link_libraries(editing-agent PRIVATE et_agent)
+
 enable_testing()
-add_executable(et_tests tests/test_mcp.cpp tests/test_media.cpp tests/test_timeline.cpp tests/test_subtitles.cpp tests/test_color.cpp tests/test_schemas.cpp tests/test_cli.cpp)
-target_link_libraries(et_tests PRIVATE et_core Catch2::Catch2WithMain)
+add_executable(et_tests tests/test_mcp.cpp tests/test_media.cpp tests/test_timeline.cpp tests/test_subtitles.cpp tests/test_color.cpp tests/test_schemas.cpp tests/test_cli.cpp tests/test_agent.cpp tests/test_agent_anthropic.cpp tests/test_agent_codex.cpp)
+target_link_libraries(et_tests PRIVATE et_agent Catch2::Catch2WithMain)
 include(CTest)
 include(Catch)
 catch_discover_tests(et_tests)
 
-install(TARGETS editing-tools RUNTIME DESTINATION bin)
+install(TARGETS editing-tools editing-agent RUNTIME DESTINATION bin)
