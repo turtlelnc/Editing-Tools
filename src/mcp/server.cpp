@@ -18,10 +18,25 @@ void Server::add_tool(Tool tool) {
   tools_.emplace(std::move(key), std::move(tool));
 }
 
-json Server::call_tool(const json& params) {
-  auto it = tools_.find(params.value("name", ""));
-  if (it == tools_.end()) throw ToolError("unknown tool: " + params.value("name", ""));
-  return it->second.handler(params.value("arguments", json::object()));
+const Tool* Server::find(const std::string& name) const {
+  auto it = tools_.find(name);
+  return it == tools_.end() ? nullptr : &it->second;
+}
+
+std::vector<const Tool*> Server::tools() const {
+  std::vector<const Tool*> out;
+  for (auto& [_, t] : tools_) out.push_back(&t);
+  return out;
+}
+
+json Server::call(const std::string& name, const json& args) const {
+  const Tool* t = find(name);
+  if (!t) throw ToolError("unknown tool: " + name);
+  return t->handler(args);
+}
+
+json Server::call_tool(const json& params) const {
+  return call(params.value("name", ""), params.value("arguments", json::object()));
 }
 
 json Server::handle(const json& msg) {

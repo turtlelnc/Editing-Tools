@@ -49,6 +49,28 @@ claude mcp add --scope user editing-tools \
 
 然后直接对 Claude 说：「把 a.mp4 的 0.5 到 5.5 秒和 b.mp4 拼起来，加上配乐并在说话时压低，加字幕，调成偏暖的色调，导出到桌面」。
 
+## 命令行（给 AI 直接跑）
+
+同一个二进制也是命令行工具，27 个工具都能直接调用，不需要常驻进程，也不用把全部工具的 schema 塞进上下文。项目状态存在一个 JSON 文件里，每条命令读取并写回：
+
+```sh
+et=~/.editing-tools/bin/editing-tools
+$et tools                         # 列出所有工具
+$et help add_clip                 # 某个工具的参数
+
+$et --project p.json create_project --width 1920 --height 1080
+$et --project p.json add_clip --path a.mp4 --in 0.5 --out 5
+$et --project p.json color_adjust --warmth 0.3 --contrast 1.1
+$et --project p.json set_subtitles --cues '[{"start":0.5,"end":3,"text":"你好"}]'
+$et --project p.json preview_frame --time 1.0     # 图片存成文件，返回 image_path
+$et --project p.json render_export --output_path out.mp4
+```
+
+- 参数写成 `--名字 值`，或者一个 JSON：`add_clip '{"path":"a.mp4"}'`；也可以 `--args-file 文件`（`-` 读标准输入）。类型按工具的 schema 转换：字符串参数永远是字符串，布尔参数可以只写 `--box`。
+- 也可以用环境变量 `EDITING_TOOLS_PROJECT` 代替 `--project`。
+- 结果是 stdout 上的一行 JSON（`--pretty` 缩进）。失败时 stderr 输出 `{"error": "..."}`，退出码 1 表示工具拒绝了这次操作，2 表示命令写错了。
+- 不带参数且标准输入是管道时，行为和以前一样（MCP 服务端），所以已有的 MCP 配置不受影响；`editing-tools mcp` 可显式指定。
+
 ## 演示脚本
 
 `examples/demo.py` 像 AI 客户端一样通过 MCP 协议走完整条流程（造几秒的小素材 → 剪辑 → 配乐/闪避/响度 → 字幕 → 调色+LUT → 预览 → 导出），最后用 ffprobe 校验结果：

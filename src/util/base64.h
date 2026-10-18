@@ -23,4 +23,29 @@ inline std::string base64(const std::string& in) {
   return out;
 }
 
+inline std::string unbase64(const std::string& in) {
+  auto val = [](unsigned char c) -> int {
+    if (c >= 'A' && c <= 'Z') return c - 'A';
+    if (c >= 'a' && c <= 'z') return c - 'a' + 26;
+    if (c >= '0' && c <= '9') return c - '0' + 52;
+    if (c == '+') return 62;
+    if (c == '/') return 63;
+    return -1;
+  };
+  std::string out;
+  unsigned acc = 0;
+  int bits = 0;
+  for (unsigned char c : in) {
+    int v = val(c);
+    if (v < 0) continue;  // padding and whitespace
+    acc = (acc << 6) | static_cast<unsigned>(v);
+    bits += 6;
+    if (bits >= 8) {
+      bits -= 8;
+      out += static_cast<char>((acc >> bits) & 0xFF);
+    }
+  }
+  return out;
+}
+
 }  // namespace et::util

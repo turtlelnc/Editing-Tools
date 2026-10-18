@@ -22,9 +22,23 @@ struct Session {
     if (!project) throw mcp::ToolError("no project open: call create_project or open_project first");
     return *project;
   }
+  // Loads a project file (used by the CLI, where every invocation is a fresh process).
+  void open(const std::string& file) {
+    std::ifstream f(file);
+    if (!f) throw mcp::ToolError("project file not found: " + file + " (create it with create_project)");
+    project = std::make_unique<model::Project>(model::Project::from_json(json::parse(f)));
+    path = std::filesystem::absolute(file).lexically_normal().string();
+  }
+  // Written via a temp file + rename so a crash or a concurrent reader never sees half a project.
   void save() {
     if (path.empty()) return;
-    std::ofstream(path) << project->to_json().dump(2);
+    const std::string tmp = path + ".tmp";
+    {
+      std::ofstream f(tmp);
+      f << project->to_json().dump(2);
+      if (!f) throw mcp::ToolError("cannot write project file: " + path);
+    }
+    std::filesystem::rename(tmp, path);
   }
 };
 

@@ -1,19 +1,22 @@
+#include <unistd.h>
+
 #include <iostream>
 
+#include "cli/cli.h"
 #include "mcp/server.h"
-#include "tools/media.h"
-#include "tools/color.h"
-#include "tools/subtitles.h"
-#include "tools/timeline.h"
+#include "tools/all.h"
 
-int main() {
-  std::ios::sync_with_stdio(false);
+int main(int argc, char** argv) {
   et::mcp::Server server("editing-tools", "0.1.0");
-  et::tools::register_media_tools(server);
   auto session = std::make_shared<et::tools::Session>();
-  et::tools::register_timeline_tools(server, session);
-  et::tools::register_subtitle_tools(server, session);
-  et::tools::register_color_tools(server, session);
-  server.serve(std::cin, std::cout);  // stdout is the protocol channel; log to stderr only
-  return 0;
+  et::tools::register_all_tools(server, session);
+
+  std::vector<std::string> args(argv + 1, argv + argc);
+  const bool serve = (args.empty() && !isatty(STDIN_FILENO)) || (!args.empty() && args[0] == "mcp");
+  if (serve) {
+    std::ios::sync_with_stdio(false);
+    server.serve(std::cin, std::cout);  // stdout is the protocol channel; log to stderr only
+    return 0;
+  }
+  return et::cli::run(args, std::cin, std::cout, std::cerr, server, session);
 }

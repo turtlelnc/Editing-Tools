@@ -2,10 +2,7 @@
 #include <set>
 
 #include "mcp/server.h"
-#include "tools/color.h"
-#include "tools/media.h"
-#include "tools/subtitles.h"
-#include "tools/timeline.h"
+#include "tools/all.h"
 
 using et::mcp::json;
 
@@ -13,10 +10,7 @@ using et::mcp::json;
 TEST_CASE("every tool advertises a well-formed input schema") {
   et::mcp::Server server("t", "0");
   auto session = std::make_shared<et::tools::Session>();
-  et::tools::register_media_tools(server);
-  et::tools::register_timeline_tools(server, session);
-  et::tools::register_subtitle_tools(server, session);
-  et::tools::register_color_tools(server, session);
+  et::tools::register_all_tools(server, session);
 
   auto tools = server.handle({{"jsonrpc", "2.0"}, {"id", 1}, {"method", "tools/list"}})["result"]["tools"];
   REQUIRE(tools.size() >= 20);
