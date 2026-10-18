@@ -1,3 +1,8 @@
 build/
 .cache/
 compile_commands.json
+*.mp4
+*.MP4
+*.mov
+*.MOV
+*.LRF
