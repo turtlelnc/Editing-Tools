@@ -6,6 +6,8 @@
 #include <sstream>
 #include <stdexcept>
 
+#include "process.h"
+
 namespace et::compiler {
 
 namespace {
@@ -36,7 +38,7 @@ int duck_ratio(const std::string& strength) {
 std::vector<std::string> compile(const model::Project& p, const Options& opt) {
   if (p.clips.empty()) throw std::invalid_argument("timeline is empty");
 
-  std::vector<std::string> args = {"ffmpeg", "-y", "-v", "error", "-nostdin"};
+  std::vector<std::string> args = {ffmpeg_bin(), "-y", "-v", "error", "-nostdin"};
   std::map<std::string, int> input_index;
   auto add_input = [&](const std::string& asset_id) {
     if (input_index.count(asset_id)) return;
@@ -74,6 +76,17 @@ std::vector<std::string> compile(const model::Project& p, const Options& opt) {
   }
   g << concat_in.str() << "concat=n=" << p.clips.size() << ":v=1:a=1[v][dlg]";
 
+  std::string video_label = "v";
+  if (!p.subtitles.empty()) {
+    if (opt.ass_path.empty()) throw std::invalid_argument("project has subtitles but no ASS file path was given");
+    // The path sits inside filtergraph quotes, so keep it to characters that need no escaping.
+    if (opt.ass_path.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_./-") !=
+        std::string::npos)
+      throw std::invalid_argument("unsupported characters in ASS path");
+    g << ";[v]ass=filename='" << opt.ass_path << "'[vout]";
+    video_label = "vout";
+  }
+
   // Music bus: each clip trimmed, shaped, delayed to its start, then summed.
   std::string mix = "dlg";
   if (!p.music.empty()) {
@@ -105,7 +118,7 @@ std::vector<std::string> compile(const model::Project& p, const Options& opt) {
   else
     g << ";[" << mix << "]anull[a]";
 
-  args.insert(args.end(), {"-filter_complex", g.str(), "-map", "[v]", "-map", "[a]", "-c:v", "libx264"});
+  args.insert(args.end(), {"-filter_complex", g.str(), "-map", "[" + video_label + "]", "-map", "[a]", "-c:v", "libx264"});
   if (opt.preview) args.insert(args.end(), {"-preset", "ultrafast", "-crf", "32"});
   else args.insert(args.end(), {"-preset", "medium", "-crf", "18"});
   args.insert(args.end(), {"-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", opt.output});

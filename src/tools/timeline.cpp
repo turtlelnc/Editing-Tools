@@ -8,53 +8,13 @@
 #include "model/timeline.h"
 #include "render/render.h"
 #include "tools/media.h"
+#include "tools/session.h"
 
 namespace et::tools {
 
-using mcp::json;
 using mcp::Tool;
 
 namespace {
-
-struct Session {
-  std::unique_ptr<model::Project> project;
-  std::string path;
-
-  model::Project& get() {
-    if (!project) throw mcp::ToolError("no project open: call create_project or open_project first");
-    return *project;
-  }
-  void save() {
-    if (path.empty()) return;
-    std::ofstream(path) << project->to_json().dump(2);
-  }
-};
-
-json props(json p, std::vector<std::string> required = {}) {
-  return {{"type", "object"}, {"properties", std::move(p)}, {"required", required}};
-}
-const json kStr = {{"type", "string"}};
-const json kNum = {{"type", "number"}};
-const json kInt = {{"type", "integer"}};
-const json kBool = {{"type", "boolean"}};
-
-template <class T>
-std::optional<T> opt(const json& a, const char* key) {
-  if (!a.contains(key) || a[key].is_null()) return std::nullopt;
-  return a[key].get<T>();
-}
-
-// Runs fn, translating model-level errors into tool errors so the model can recover.
-template <class F>
-json guarded(F&& fn) {
-  try {
-    return fn();
-  } catch (const mcp::ToolError&) {
-    throw;
-  } catch (const std::exception& e) {
-    throw mcp::ToolError(e.what());
-  }
-}
 
 model::Asset asset_from_probe(const json& info) {
   model::Asset a;
@@ -72,12 +32,10 @@ model::Asset asset_from_probe(const json& info) {
   return a;
 }
 
-std::string absolute(const std::string& p) { return std::filesystem::absolute(p).lexically_normal().string(); }
 
 }  // namespace
 
-void register_timeline_tools(mcp::Server& server) {
-  auto s = std::make_shared<Session>();
+void register_timeline_tools(mcp::Server& server, std::shared_ptr<Session> s) {
 
   server.add_tool({"create_project", "Create a new project and save it to project_path (a .json file). Replaces any open project.",
                    props({{"project_path", kStr}, {"name", kStr}, {"width", kInt}, {"height", kInt}, {"fps", kNum}},
@@ -236,7 +194,7 @@ void register_timeline_tools(mcp::Server& server) {
                      [s, preview](const json& a) {
                        return guarded([&] {
                          auto out = absolute(a.at("output_path"));
-                         render::render(s->get(), {out, preview});
+                         render::render(s->get(), {out, preview, ""});
                          auto info = probe_media(out);
                          return json{{"output", out}, {"duration_sec", info["duration_sec"]}};
                        });

@@ -5,7 +5,11 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <cstdlib>
 #include <cstring>
+#include <map>
+#include <mutex>
+#include <sstream>
 #include <stdexcept>
 
 namespace et {
@@ -53,6 +57,32 @@ ProcResult run(const std::vector<std::string>& argv) {
   waitpid(pid, &status, 0);
   r.exit_code = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
   return r;
+}
+
+std::string ffmpeg_bin() {
+  const char* e = std::getenv("EDITING_TOOLS_FFMPEG");
+  return (e && *e) ? e : "ffmpeg";
+}
+
+bool ffmpeg_has_filter(const std::string& name) {
+  static std::mutex mu;
+  static std::map<std::string, bool> cache;  // keyed by binary + filter
+  std::lock_guard<std::mutex> lock(mu);
+  const std::string key = ffmpeg_bin() + "\n" + name;
+  auto it = cache.find(key);
+  if (it != cache.end()) return it->second;
+  bool found = false;
+  auto r = run({ffmpeg_bin(), "-hide_banner", "-filters"});
+  if (r.exit_code == 0) {
+    std::istringstream lines(r.out);
+    std::string line;
+    while (std::getline(lines, line)) {
+      std::istringstream f(line);
+      std::string flags, fname;
+      if ((f >> flags >> fname) && fname == name) { found = true; break; }
+    }
+  }
+  return cache[key] = found;
 }
 
 }  // namespace et

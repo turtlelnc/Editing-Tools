@@ -9,6 +9,7 @@ namespace et::compiler {
 struct Options {
   std::string output;
   bool preview = false;  // fast, low-quality encode
+  std::string ass_path;  // ASS file to burn in; required when the project has subtitles
 };
 
 // Builds the full ffmpeg argv (including "ffmpeg") for the project's timeline.

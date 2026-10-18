@@ -45,6 +45,24 @@ struct LoudNorm {  // EBU R128 normalization of the final mix
   double lufs = -16, true_peak = -1.5;
 };
 
+struct SubtitleCue {
+  std::string id;
+  double start = 0, end = 0;  // seconds on the output timeline
+  std::string text;           // may contain '\n' for manual line breaks
+};
+
+struct SubtitleStyle {
+  std::string font;                 // empty = platform default CJK-capable font
+  double font_size = 0;             // px at project height; 0 = auto (height / 18)
+  std::string color = "#FFFFFF", outline_color = "#000000";
+  double outline = 2.5, shadow = 1;
+  bool bold = false;
+  std::string position = "bottom";  // bottom | middle | top
+  int margin_v = 0;                 // px from the edge; 0 = auto
+  bool box = false;                 // opaque background box behind text
+  double box_opacity = 0.6;
+};
+
 struct AudioUpdate {  // unset fields are left unchanged
   std::optional<double> volume_db, fade_in, fade_out;
   std::optional<bool> denoise;
@@ -60,7 +78,9 @@ struct Project {
   std::vector<MusicClip> music;
   Duck duck;
   LoudNorm loudnorm;
-  int next_asset = 1, next_clip = 1, next_music = 1;
+  std::vector<SubtitleCue> subtitles;  // sorted by start
+  SubtitleStyle subtitle_style;
+  int next_asset = 1, next_clip = 1, next_music = 1, next_cue = 1;
 
   const Asset& add_asset(Asset a);  // dedupes by path
   const Asset& asset(const std::string& id) const;
@@ -76,6 +96,15 @@ struct Project {
   void set_audio(const std::string& id, const AudioUpdate& u);  // id of a clip ("c*") or music clip ("m*")
   void set_duck(bool enabled, const std::string& strength);
   void set_loudnorm(bool enabled, double lufs, double true_peak);
+
+  // Replaces all subtitles (ids are reassigned). Cue ids in the input are ignored.
+  void set_subtitles(std::vector<SubtitleCue> cues);
+  void update_subtitle(const std::string& id, std::optional<double> start, std::optional<double> end,
+                       std::optional<std::string> text);
+  void delete_subtitle(const std::string& id);
+  // Merges the given fields (font, font_size, color, outline_color, outline, shadow, bold, position,
+  // margin_v, box, box_opacity) into the style.
+  void set_subtitle_style(const json& patch);
   double duration() const;
 
   json to_json() const;

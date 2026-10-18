@@ -1,6 +1,7 @@
 #include "model/timeline.h"
 
 #include <algorithm>
+#include <cctype>
 #include <stdexcept>
 
 namespace et::model {
@@ -154,8 +155,83 @@ double Project::duration() const {
   return d;
 }
 
+namespace {
+void check_cue(const SubtitleCue& c) {
+  if (c.start < 0 || c.end <= c.start) throw invalid_argument("subtitle needs 0 <= start < end");
+  if (c.text.find_first_not_of(" \t\r\n") == std::string::npos) throw invalid_argument("subtitle text is empty");
+}
+bool is_hex_color(const std::string& s) {
+  if (s.size() != 7 || s[0] != '#') return false;
+  return std::all_of(s.begin() + 1, s.end(), [](unsigned char ch) { return std::isxdigit(ch); });
+}
+void sort_cues(std::vector<SubtitleCue>& v) {
+  std::stable_sort(v.begin(), v.end(), [](auto& a, auto& b) { return a.start < b.start; });
+}
+}  // namespace
+
+void Project::set_subtitles(std::vector<SubtitleCue> cues) {
+  for (auto& c : cues) check_cue(c);
+  sort_cues(cues);
+  int n = 1;
+  for (auto& c : cues) c.id = "s" + std::to_string(n++);
+  subtitles = std::move(cues);
+  next_cue = n;
+}
+
+void Project::update_subtitle(const std::string& id, std::optional<double> start, std::optional<double> end,
+                              std::optional<std::string> text) {
+  auto it = std::find_if(subtitles.begin(), subtitles.end(), [&](auto& c) { return c.id == id; });
+  if (it == subtitles.end()) throw invalid_argument("unknown subtitle: " + id);
+  SubtitleCue c = *it;
+  if (start) c.start = *start;
+  if (end) c.end = *end;
+  if (text) c.text = *text;
+  check_cue(c);
+  *it = c;
+  sort_cues(subtitles);
+}
+
+void Project::delete_subtitle(const std::string& id) {
+  auto it = std::find_if(subtitles.begin(), subtitles.end(), [&](auto& c) { return c.id == id; });
+  if (it == subtitles.end()) throw invalid_argument("unknown subtitle: " + id);
+  subtitles.erase(it);
+}
+
+void Project::set_subtitle_style(const json& patch) {
+  SubtitleStyle s = subtitle_style;
+  for (auto& [k, v] : patch.items()) {
+    if (k == "font") s.font = v.get<std::string>();
+    else if (k == "font_size") s.font_size = v.get<double>();
+    else if (k == "color") s.color = v.get<std::string>();
+    else if (k == "outline_color") s.outline_color = v.get<std::string>();
+    else if (k == "outline") s.outline = v.get<double>();
+    else if (k == "shadow") s.shadow = v.get<double>();
+    else if (k == "bold") s.bold = v.get<bool>();
+    else if (k == "position") s.position = v.get<std::string>();
+    else if (k == "margin_v") s.margin_v = v.get<int>();
+    else if (k == "box") s.box = v.get<bool>();
+    else if (k == "box_opacity") s.box_opacity = v.get<double>();
+    else throw invalid_argument("unknown style field: " + k);
+  }
+  if (!is_hex_color(s.color) || !is_hex_color(s.outline_color)) throw invalid_argument("colors must look like #RRGGBB");
+  if (s.font_size != 0 && (s.font_size < 8 || s.font_size > 400)) throw invalid_argument("font_size must be 0 (auto) or 8-400");
+  if (s.outline < 0 || s.outline > 20 || s.shadow < 0 || s.shadow > 20) throw invalid_argument("outline/shadow must be within [0, 20]");
+  if (s.position != "bottom" && s.position != "middle" && s.position != "top")
+    throw invalid_argument("position must be bottom, middle or top");
+  if (s.margin_v < 0 || s.margin_v > 2000) throw invalid_argument("margin_v must be within [0, 2000]");
+  if (s.box_opacity < 0 || s.box_opacity > 1) throw invalid_argument("box_opacity must be within [0, 1]");
+  if (s.font.find_first_of("\n,") != std::string::npos) throw invalid_argument("invalid font name");
+  subtitle_style = s;
+}
+
 json Project::to_json() const {
-  json ja = json::array(), jc = json::array(), jm = json::array();
+  json ja = json::array(), jc = json::array(), jm = json::array(), js = json::array();
+  for (auto& c : subtitles) js.push_back({{"id", c.id}, {"start", c.start}, {"end", c.end}, {"text", c.text}});
+  const auto& st = subtitle_style;
+  json jstyle = {{"font", st.font}, {"font_size", st.font_size}, {"color", st.color},
+                 {"outline_color", st.outline_color}, {"outline", st.outline}, {"shadow", st.shadow},
+                 {"bold", st.bold}, {"position", st.position}, {"margin_v", st.margin_v}, {"box", st.box},
+                 {"box_opacity", st.box_opacity}};
   for (auto& a : assets)
     ja.push_back({{"id", a.id}, {"path", a.path}, {"duration", a.duration}, {"has_video", a.has_video},
                   {"has_audio", a.has_audio}, {"width", a.width}, {"height", a.height}});
@@ -169,10 +245,10 @@ json Project::to_json() const {
     jm.push_back({{"id", m.id}, {"asset", m.asset_id}, {"in", m.in}, {"out", m.out}, {"start", m.start},
                   {"audio", audio_json(m.audio)}});
   return {{"name", name}, {"width", width}, {"height", height}, {"fps", fps}, {"sample_rate", sample_rate},
-          {"duration", duration()}, {"assets", ja}, {"clips", jc}, {"music", jm},
+          {"duration", duration()}, {"assets", ja}, {"clips", jc}, {"music", jm}, {"subtitles", js}, {"subtitle_style", jstyle},
           {"duck", {{"enabled", duck.enabled}, {"strength", duck.strength}}},
           {"loudnorm", {{"enabled", loudnorm.enabled}, {"lufs", loudnorm.lufs}, {"true_peak", loudnorm.true_peak}}},
-          {"next_asset", next_asset}, {"next_clip", next_clip}, {"next_music", next_music}};
+          {"next_asset", next_asset}, {"next_clip", next_clip}, {"next_music", next_music}, {"next_cue", next_cue}};
 }
 
 Project Project::from_json(const json& j) {
@@ -185,6 +261,10 @@ Project Project::from_json(const json& j) {
   p.next_asset = j.value("next_asset", 1);
   p.next_clip = j.value("next_clip", 1);
   p.next_music = j.value("next_music", 1);
+  p.next_cue = j.value("next_cue", 1);
+  for (auto& c : j.value("subtitles", json::array()))
+    p.subtitles.push_back({c["id"], c["start"], c["end"], c["text"]});
+  if (j.contains("subtitle_style")) p.set_subtitle_style(j["subtitle_style"]);
   if (j.contains("duck")) p.duck = {j["duck"].value("enabled", false), j["duck"].value("strength", "medium")};
   if (j.contains("loudnorm"))
     p.loudnorm = {j["loudnorm"].value("enabled", false), j["loudnorm"].value("lufs", -16.0),
