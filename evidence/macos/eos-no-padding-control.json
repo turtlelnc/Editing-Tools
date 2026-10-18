@@ -1,6 +1,0 @@
-{
-  "description": "Audio clip ends at frame 90; blank track thereafter; mixed output still has reverb filter",
-  "tail_rms_after_frame120": 0.0,
-  "dry_tail_rms": 0.0,
-  "finding": "blank track does not advance/drain SoX reverb as explicit PCM silence does"
-}

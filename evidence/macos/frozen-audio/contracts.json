@@ -1,9 +1,0 @@
-{
-  "passed": true,
-  "controls": [
-    "insufficient_disk_rejected_before_PCM_creation",
-    "interrupted_PCM_discarded_no_manifest",
-    "existing_artifact_preserved",
-    "post_bake_source_validation_failure_discards_artifact"
-  ]
-}
