@@ -32,8 +32,10 @@ add_executable(editing-tools src/main.cpp)
 target_link_libraries(editing-tools PRIVATE et_core)
 
 enable_testing()
-add_executable(et_tests tests/test_mcp.cpp tests/test_media.cpp tests/test_timeline.cpp tests/test_subtitles.cpp tests/test_color.cpp)
+add_executable(et_tests tests/test_mcp.cpp tests/test_media.cpp tests/test_timeline.cpp tests/test_subtitles.cpp tests/test_color.cpp tests/test_schemas.cpp)
 target_link_libraries(et_tests PRIVATE et_core Catch2::Catch2WithMain)
 include(CTest)
 include(Catch)
 catch_discover_tests(et_tests)
+
+install(TARGETS editing-tools RUNTIME DESTINATION bin)

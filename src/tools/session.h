@@ -28,7 +28,10 @@ struct Session {
   }
 };
 
+// JSON-Schema for a tool's arguments. Note `props({})` passes JSON null, not {}: normalize it, because
+// MCP clients reject a null "properties".
 inline json props(json p, std::vector<std::string> required = {}) {
+  if (!p.is_object()) p = json::object();
   return {{"type", "object"}, {"properties", std::move(p)}, {"required", required}};
 }
 inline const json kStr = {{"type", "string"}};
