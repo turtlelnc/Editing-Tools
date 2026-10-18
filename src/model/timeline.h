@@ -20,10 +20,32 @@ struct AudioProps {
   bool denoise = false;
 };
 
+// Applied in this order: warmth/tint, brightness/contrast/saturation/gamma, curve, LUT.
+struct ColorGrade {
+  double brightness = 0;  // [-1, 1]
+  double contrast = 1;    // [0, 3]
+  double saturation = 1;  // [0, 3]
+  double gamma = 1;       // [0.1, 5]
+  double warmth = 0;      // [-1, 1]; positive = warmer (orange), negative = cooler (blue)
+  double tint = 0;        // [-1, 1]; positive = magenta, negative = green
+  std::string curve_preset;                           // an ffmpeg curves preset, or empty
+  std::vector<std::pair<double, double>> curve_points;  // master curve (x, y) in [0, 1], or empty
+  std::string lut_path;                               // .cube/.3dl/.dat/.m3d/.csp, or empty
+  double lut_intensity = 1;                           // 0 = off .. 1 = full
+
+  bool has_adjustments() const {
+    return brightness != 0 || contrast != 1 || saturation != 1 || gamma != 1 || warmth != 0 || tint != 0;
+  }
+  bool neutral() const {
+    return !has_adjustments() && curve_preset.empty() && curve_points.empty() && lut_path.empty();
+  }
+};
+
 struct Clip {
   std::string id, asset_id;
   double in = 0, out = 0;  // seconds within the source
   AudioProps audio;        // applies to this clip's own sound
+  ColorGrade grade;        // applied on top of the project-wide grade
   double length() const { return out - in; }
 };
 
@@ -78,6 +100,7 @@ struct Project {
   std::vector<MusicClip> music;
   Duck duck;
   LoudNorm loudnorm;
+  ColorGrade grade;  // project-wide look, applied to every clip before its own grade
   std::vector<SubtitleCue> subtitles;  // sorted by start
   SubtitleStyle subtitle_style;
   int next_asset = 1, next_clip = 1, next_music = 1, next_cue = 1;
@@ -97,6 +120,14 @@ struct Project {
   void set_duck(bool enabled, const std::string& strength);
   void set_loudnorm(bool enabled, double lufs, double true_peak);
 
+  // Color. clip_id "" targets the project-wide grade. Each call validates fully before changing anything.
+  void set_color(const std::string& clip_id, const json& patch);  // brightness contrast saturation gamma warmth tint
+  void set_curve(const std::string& clip_id, const std::string& preset,
+                 const std::vector<std::pair<double, double>>& points);  // both empty clears the curve
+  void set_lut(const std::string& clip_id, const std::string& path, double intensity);
+  void reset_color(const std::string& clip_id);
+  const ColorGrade& grade_for(const std::string& clip_id) const;
+
   // Replaces all subtitles (ids are reassigned). Cue ids in the input are ignored.
   void set_subtitles(std::vector<SubtitleCue> cues);
   void update_subtitle(const std::string& id, std::optional<double> start, std::optional<double> end,
@@ -113,6 +144,7 @@ struct Project {
  private:
   Clip& clip_ref(const std::string& id);
   MusicClip& music_ref(const std::string& id);
+  ColorGrade& grade_ref(const std::string& clip_id);
   void check_music(const Asset& a, double in, double out, double start) const;
   void check_range(const Asset& a, double in, double out) const;
 };

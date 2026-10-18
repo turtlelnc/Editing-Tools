@@ -194,7 +194,10 @@ void register_timeline_tools(mcp::Server& server, std::shared_ptr<Session> s) {
                      [s, preview](const json& a) {
                        return guarded([&] {
                          auto out = absolute(a.at("output_path"));
-                         render::render(s->get(), {out, preview, ""});
+                         compiler::Options o;
+                         o.output = out;
+                         o.preview = preview;
+                         render::render(s->get(), o);
                          auto info = probe_media(out);
                          return json{{"output", out}, {"duration_sec", info["duration_sec"]}};
                        });

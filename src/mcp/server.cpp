@@ -52,8 +52,15 @@ json Server::handle(const json& msg) {
   if (method == "tools/call") {
     try {
       json payload = call_tool(msg.value("params", json::object()));
-      return {{"jsonrpc", "2.0"}, {"id", id},
-              {"result", {{"content", {{{"type", "text"}, {"text", payload.dump(2)}}}}, {"isError", false}}}};
+      json content = json::array();
+      // A handler may attach an image as {"__image": {"data": <base64>, "mime": "image/jpeg"}}.
+      if (payload.is_object() && payload.contains("__image")) {
+        json img = payload["__image"];
+        payload.erase("__image");
+        content.push_back({{"type", "image"}, {"data", img.value("data", "")}, {"mimeType", img.value("mime", "image/jpeg")}});
+      }
+      content.push_back({{"type", "text"}, {"text", payload.dump(2)}});
+      return {{"jsonrpc", "2.0"}, {"id", id}, {"result", {{"content", content}, {"isError", false}}}};
     } catch (const std::exception& e) {
       // Tool failures are reported in-band so the model can see and react to them.
       return {{"jsonrpc", "2.0"}, {"id", id},

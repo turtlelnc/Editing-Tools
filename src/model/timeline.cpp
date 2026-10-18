@@ -52,7 +52,7 @@ Clip& Project::clip_ref(const std::string& id) {
 const Clip& Project::add_clip(const std::string& asset_id, double in, double out, int index) {
   check_range(asset(asset_id), in, out);
   if (index < 0 || index > static_cast<int>(clips.size())) index = static_cast<int>(clips.size());
-  Clip c{"c" + std::to_string(next_clip++), asset_id, in, out, {}};
+  Clip c{"c" + std::to_string(next_clip++), asset_id, in, out, {}, {}};
   return *clips.insert(clips.begin() + index, std::move(c));
 }
 
@@ -224,6 +224,107 @@ void Project::set_subtitle_style(const json& patch) {
   subtitle_style = s;
 }
 
+ColorGrade& Project::grade_ref(const std::string& clip_id) {
+  return clip_id.empty() ? grade : clip_ref(clip_id).grade;
+}
+
+const ColorGrade& Project::grade_for(const std::string& clip_id) const {
+  return const_cast<Project*>(this)->grade_ref(clip_id);
+}
+
+namespace {
+void need_range(const char* name, double v, double lo, double hi) {
+  if (!(v >= lo && v <= hi))
+    throw invalid_argument(std::string(name) + " must be within [" + std::to_string(lo) + ", " + std::to_string(hi) + "]");
+}
+const char* const kCurvePresets[] = {"color_negative", "cross_process", "darker", "increase_contrast", "lighter",
+                                     "linear_contrast", "medium_contrast", "negative", "strong_contrast", "vintage"};
+bool has_lut_extension(const std::string& path) {
+  auto dot = path.find_last_of('.');
+  if (dot == std::string::npos) return false;
+  std::string ext = path.substr(dot + 1);
+  std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return std::tolower(c); });
+  return ext == "cube" || ext == "3dl" || ext == "dat" || ext == "m3d" || ext == "csp";
+}
+}  // namespace
+
+void Project::set_color(const std::string& clip_id, const json& patch) {
+  ColorGrade g = grade_ref(clip_id);
+  for (auto& [k, v] : patch.items()) {
+    if (k == "clip_id") continue;
+    if (k == "brightness") g.brightness = v.get<double>();
+    else if (k == "contrast") g.contrast = v.get<double>();
+    else if (k == "saturation") g.saturation = v.get<double>();
+    else if (k == "gamma") g.gamma = v.get<double>();
+    else if (k == "warmth") g.warmth = v.get<double>();
+    else if (k == "tint") g.tint = v.get<double>();
+    else throw invalid_argument("unknown color field: " + k);
+  }
+  need_range("brightness", g.brightness, -1, 1);
+  need_range("contrast", g.contrast, 0, 3);
+  need_range("saturation", g.saturation, 0, 3);
+  need_range("gamma", g.gamma, 0.1, 5);
+  need_range("warmth", g.warmth, -1, 1);
+  need_range("tint", g.tint, -1, 1);
+  grade_ref(clip_id) = g;
+}
+
+void Project::set_curve(const std::string& clip_id, const std::string& preset,
+                        const std::vector<std::pair<double, double>>& points) {
+  if (!preset.empty() && !points.empty()) throw invalid_argument("give either a curve preset or points, not both");
+  if (!preset.empty() && std::find(std::begin(kCurvePresets), std::end(kCurvePresets), preset) == std::end(kCurvePresets)) {
+    std::string all;
+    for (auto* p : kCurvePresets) all += std::string(all.empty() ? "" : ", ") + p;
+    throw invalid_argument("unknown curve preset; use one of: " + all);
+  }
+  if (!points.empty()) {
+    if (points.size() < 2 || points.size() > 16) throw invalid_argument("a curve needs 2-16 points");
+    for (size_t i = 0; i < points.size(); ++i) {
+      need_range("curve x", points[i].first, 0, 1);
+      need_range("curve y", points[i].second, 0, 1);
+      if (i > 0 && points[i].first <= points[i - 1].first) throw invalid_argument("curve x values must be strictly increasing");
+    }
+  }
+  ColorGrade& g = grade_ref(clip_id);
+  g.curve_preset = preset;
+  g.curve_points = points;
+}
+
+void Project::set_lut(const std::string& clip_id, const std::string& path, double intensity) {
+  if (!has_lut_extension(path)) throw invalid_argument("LUT must be a .cube, .3dl, .dat, .m3d or .csp file");
+  need_range("intensity", intensity, 0, 1);
+  if (path.find('\n') != std::string::npos) throw invalid_argument("invalid LUT path");
+  ColorGrade& g = grade_ref(clip_id);
+  g.lut_path = path;
+  g.lut_intensity = intensity;
+}
+
+void Project::reset_color(const std::string& clip_id) { grade_ref(clip_id) = {}; }
+
+namespace {
+json grade_json(const ColorGrade& g) {
+  json pts = json::array();
+  for (auto& [x, y] : g.curve_points) pts.push_back({x, y});
+  return {{"brightness", g.brightness}, {"contrast", g.contrast}, {"saturation", g.saturation}, {"gamma", g.gamma},
+          {"warmth", g.warmth}, {"tint", g.tint}, {"curve_preset", g.curve_preset}, {"curve_points", pts},
+          {"lut_path", g.lut_path}, {"lut_intensity", g.lut_intensity}};
+}
+ColorGrade grade_from(const json& j) {
+  ColorGrade g;
+  g.brightness = j.value("brightness", 0.0);
+  g.contrast = j.value("contrast", 1.0);
+  g.saturation = j.value("saturation", 1.0);
+  g.gamma = j.value("gamma", 1.0);
+  g.warmth = j.value("warmth", 0.0);
+  g.tint = j.value("tint", 0.0);
+  g.curve_preset = j.value("curve_preset", "");
+  for (auto& p : j.value("curve_points", json::array())) g.curve_points.emplace_back(p[0].get<double>(), p[1].get<double>());
+  g.lut_path = j.value("lut_path", "");
+  g.lut_intensity = j.value("lut_intensity", 1.0);
+  return g;
+}
+}  // namespace
+
 json Project::to_json() const {
   json ja = json::array(), jc = json::array(), jm = json::array(), js = json::array();
   for (auto& c : subtitles) js.push_back({{"id", c.id}, {"start", c.start}, {"end", c.end}, {"text", c.text}});
@@ -238,14 +339,14 @@ json Project::to_json() const {
   double t = 0;
   for (auto& c : clips) {
     jc.push_back({{"id", c.id}, {"asset", c.asset_id}, {"in", c.in}, {"out", c.out}, {"start", t},
-                  {"audio", audio_json(c.audio)}});
+                  {"audio", audio_json(c.audio)}, {"color", grade_json(c.grade)}});
     t += c.length();
   }
   for (auto& m : music)
     jm.push_back({{"id", m.id}, {"asset", m.asset_id}, {"in", m.in}, {"out", m.out}, {"start", m.start},
                   {"audio", audio_json(m.audio)}});
   return {{"name", name}, {"width", width}, {"height", height}, {"fps", fps}, {"sample_rate", sample_rate},
-          {"duration", duration()}, {"assets", ja}, {"clips", jc}, {"music", jm}, {"subtitles", js}, {"subtitle_style", jstyle},
+          {"duration", duration()}, {"assets", ja}, {"clips", jc}, {"music", jm}, {"color", grade_json(grade)}, {"subtitles", js}, {"subtitle_style", jstyle},
           {"duck", {{"enabled", duck.enabled}, {"strength", duck.strength}}},
           {"loudnorm", {{"enabled", loudnorm.enabled}, {"lufs", loudnorm.lufs}, {"true_peak", loudnorm.true_peak}}},
           {"next_asset", next_asset}, {"next_clip", next_clip}, {"next_music", next_music}, {"next_cue", next_cue}};
@@ -271,8 +372,10 @@ Project Project::from_json(const json& j) {
                   j["loudnorm"].value("true_peak", -1.5)};
   for (auto& a : j.value("assets", json::array()))
     p.assets.push_back({a["id"], a["path"], a["duration"], a["has_video"], a["has_audio"], a["width"], a["height"]});
+  if (j.contains("color")) p.grade = grade_from(j["color"]);
   for (auto& c : j.value("clips", json::array()))
-    p.clips.push_back({c["id"], c["asset"], c["in"], c["out"], audio_from(c.value("audio", json::object()))});
+    p.clips.push_back({c["id"], c["asset"], c["in"], c["out"], audio_from(c.value("audio", json::object())),
+                       grade_from(c.value("color", json::object()))});
   for (auto& m : j.value("music", json::array()))
     p.music.push_back({m["id"], m["asset"], m["in"], m["out"], m["start"], audio_from(m.value("audio", json::object()))});
   return p;

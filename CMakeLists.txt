@@ -22,6 +22,7 @@ add_library(et_core
   src/tools/media.cpp
   src/subtitles/ass.cpp
   src/tools/subtitles.cpp
+  src/tools/color.cpp
   src/tools/timeline.cpp)
 target_include_directories(et_core PUBLIC src)
 target_link_libraries(et_core PUBLIC nlohmann_json::nlohmann_json)
@@ -31,7 +32,7 @@ add_executable(editing-tools src/main.cpp)
 target_link_libraries(editing-tools PRIVATE et_core)
 
 enable_testing()
-add_executable(et_tests tests/test_mcp.cpp tests/test_media.cpp tests/test_timeline.cpp tests/test_subtitles.cpp)
+add_executable(et_tests tests/test_mcp.cpp tests/test_media.cpp tests/test_timeline.cpp tests/test_subtitles.cpp tests/test_color.cpp)
 target_link_libraries(et_tests PRIVATE et_core Catch2::Catch2WithMain)
 include(CTest)
 include(Catch)
