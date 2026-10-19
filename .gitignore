@@ -8,3 +8,5 @@ compile_commands.json
 *.LRF
 .DS_Store
 __pycache__/
+build-a/
+build-b/
