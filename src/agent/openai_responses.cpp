@@ -78,7 +78,7 @@ OpenAiResponses::OpenAiResponses(ProviderConfig cfg) : cfg_(std::move(cfg)) {
   if (cfg_.api_key.empty()) throw std::invalid_argument("the codex provider needs a signed-in ChatGPT account");
   if (cfg_.base_url.empty()) cfg_.base_url = "https://chatgpt.com/backend-api/codex";
   while (!cfg_.base_url.empty() && cfg_.base_url.back() == '/') cfg_.base_url.pop_back();
-  if (cfg_.model.empty()) cfg_.model = "gpt-5.1-codex";
+  if (cfg_.model.empty()) cfg_.model = "gpt-5.6-sol";  // same default as Codex.cpp
 }
 
 json OpenAiResponses::build_request(const std::vector<Message>& messages, const std::vector<ToolSpec>& tools) const {
