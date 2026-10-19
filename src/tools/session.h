@@ -1,6 +1,7 @@
 #pragma once
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -17,6 +18,8 @@ using mcp::json;
 struct Session {
   std::unique_ptr<model::Project> project;
   std::string path;
+  // Whisper results keyed by "<media path>|<language>" so transcribe and auto_subtitles do not run the model twice.
+  std::map<std::string, std::string> transcripts;
 
   model::Project& get() {
     if (!project) throw mcp::ToolError("no project open: call create_project or open_project first");

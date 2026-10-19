@@ -372,7 +372,7 @@ TEST_CASE("agent: the system prompt explains the workflow and both kinds of time
 
   agent::PromptContext dry = ctx;
   dry.can_export = false;
-  CHECK_THAT(agent::system_prompt(dry), ContainsSubstring("dry run"));
+  CHECK_THAT(agent::system_prompt(dry), ContainsSubstring("render_export is disabled"));
 }
 
 TEST_CASE("agent: errors from the model surface as ProviderError with the HTTP status") {

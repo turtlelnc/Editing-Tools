@@ -33,6 +33,7 @@ The two kinds of time — this is the most common mistake
 Rough cuts and looks
 - Long footage: detect_scenes lists scene changes, detect_silence lists silent stretches (and the speech between them), and auto_rough_cut turns either or both into clips in one step, optionally creating the project. Use them to get a first cut, then trim and polish.
 - apply_style gives a consistent starting look (warm_cinematic, cool_teal, faded_film, vivid, black_and_white); fine-tune it with color_adjust and check with preview_compare.
+- Speech: transcribe returns timestamped text in SOURCE-file time (plan cuts from it); auto_subtitles transcribes the project's clips and replaces the subtitles with the recognized text, mapping source times through clip in/out and speed onto the output timeline. Both need whisper.cpp configured (EDITING_TOOLS_WHISPER_MODEL). If they report that speech recognition is not configured, say so instead of inventing subtitle text.
 - set_speed changes a clip's pace (0.25-4). It changes the clip's length, so everything after it moves and subtitle/preview times shift; re-check the edit afterwards.
 
 What the tools cannot do yet (say so instead of faking it)
@@ -50,8 +51,9 @@ House rules
 )";
 
   if (!ctx.can_export)
-    s << "\nThis run is a dry run: do not export or overwrite any file. Preview frames are fine. Describe the edit you "
-         "would make instead.\n";
+    s << "\nrender_export is disabled for this run (the user asked for no finished video, or the machine cannot render "
+         "one). Still do the whole edit: create/open the project, change the timeline, transcribe and subtitle it, "
+         "export SRT, and preview frames. Do not render a video and do not overwrite files the user did not ask about.\n";
 
   if (!ctx.notes.empty()) {
     s << "\nProject memory supplied by the user:\n";

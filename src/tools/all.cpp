@@ -5,6 +5,7 @@
 #include "tools/media.h"
 #include "tools/subtitles.h"
 #include "tools/timeline.h"
+#include "tools/transcribe.h"
 
 namespace et::tools {
 
@@ -14,6 +15,7 @@ void register_all_tools(mcp::Server& server, std::shared_ptr<Session> session) {
   register_timeline_tools(server, session);
   register_subtitle_tools(server, session);
   register_color_tools(server, session);
+  register_transcribe_tools(server, session);
 }
 
 }  // namespace et::tools

@@ -30,6 +30,7 @@ add_library(et_core
   src/tools/subtitles.cpp
   src/tools/color.cpp
   src/tools/analysis.cpp
+  src/tools/transcribe.cpp
   src/tools/all.cpp
   src/cli/cli.cpp
   src/tools/timeline.cpp)
@@ -63,7 +64,7 @@ add_executable(editing-agent src/agent/main.cpp)
 target_link_libraries(editing-agent PRIVATE et_agent)
 
 enable_testing()
-add_executable(et_tests tests/test_mcp.cpp tests/test_media.cpp tests/test_timeline.cpp tests/test_subtitles.cpp tests/test_color.cpp tests/test_schemas.cpp tests/test_cli.cpp tests/test_agent.cpp tests/test_agent_anthropic.cpp tests/test_agent_codex.cpp tests/test_analysis.cpp tests/test_agent_http.cpp)
+add_executable(et_tests tests/test_mcp.cpp tests/test_media.cpp tests/test_timeline.cpp tests/test_subtitles.cpp tests/test_color.cpp tests/test_schemas.cpp tests/test_cli.cpp tests/test_agent.cpp tests/test_agent_anthropic.cpp tests/test_agent_codex.cpp tests/test_analysis.cpp tests/test_agent_http.cpp tests/test_transcribe.cpp)
 target_link_libraries(et_tests PRIVATE et_agent Catch2::Catch2WithMain)
 target_compile_definitions(et_tests PRIVATE EDITING_AGENT_BIN="$<TARGET_FILE:editing-agent>")
 add_dependencies(et_tests editing-agent)
