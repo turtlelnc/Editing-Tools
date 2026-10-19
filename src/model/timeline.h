@@ -46,7 +46,8 @@ struct Clip {
   double in = 0, out = 0;  // seconds within the source
   AudioProps audio;        // applies to this clip's own sound
   ColorGrade grade;        // applied on top of the project-wide grade
-  double length() const { return out - in; }
+  double speed = 1.0;      // playback speed (0.25-4); 2 = twice as fast, so the clip is half as long on screen
+  double length() const { return (out - in) / speed; }
 };
 
 // Background music placed on the timeline at `start`; plays source [in, out).
@@ -108,6 +109,7 @@ struct Project {
   const Asset& add_asset(Asset a);  // dedupes by path
   const Asset& asset(const std::string& id) const;
   const Clip& add_clip(const std::string& asset_id, double in, double out, int index = -1);
+  void set_speed(const std::string& clip_id, double speed);
   void trim_clip(const std::string& id, double in, double out);
   void move_clip(const std::string& id, int index);
   void delete_clip(const std::string& id);

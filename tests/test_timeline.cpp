@@ -1,3 +1,5 @@
+#include <unistd.h>
+
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <catch2/catch_approx.hpp>
@@ -59,7 +61,7 @@ TEST_CASE("compiler emits trim/concat graph and synthesizes silence for silent s
 
 TEST_CASE("end to end: render two cuts and verify duration with ffprobe") {
   namespace fs = std::filesystem;
-  auto dir = fs::temp_directory_path() / "et_e2e";
+  auto dir = fs::temp_directory_path() / ("et_e2e_" + std::to_string(::getpid()));
   fs::create_directories(dir);
   auto src = (dir / "src.mp4").string(), silent = (dir / "silent.mp4").string(), out = (dir / "out.mp4").string();
   REQUIRE(run({"ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc=size=640x360:rate=30:duration=3", "-f", "lavfi",
@@ -167,7 +169,7 @@ double integrated_lufs(const std::string& file) {
 }
 
 struct AudioFixture {
-  fs::path dir = fs::temp_directory_path() / "et_audio";
+  fs::path dir = fs::temp_directory_path() / ("et_audio_" + std::to_string(::getpid()));
   std::string video = (dir / "dialog.mp4").string(), song = (dir / "song.wav").string();
   AudioFixture() {
     fs::create_directories(dir);
@@ -227,4 +229,38 @@ TEST_CASE("normalize_loudness brings the mix near the target") {
   p.set_audio("m1", {-25.0, std::nullopt, std::nullopt, std::nullopt});
   p.set_loudnorm(true, -16, -1.5);
   REQUIRE(integrated_lufs(f.render(p, "norm.mp4")) == Catch::Approx(-16.0).margin(1.5));
+}
+
+TEST_CASE("clip speed changes length, round-trips and is validated") {
+  using nlohmann::json;
+  model::Project p;
+  p.width = 320;
+  p.height = 240;
+  p.fps = 25;
+  p.add_asset({"", "/m/a.mp4", 10, true, true, 640, 480});
+  p.add_clip("a1", 0, 4);
+  CHECK(p.duration() == 4.0);
+  p.set_speed("c1", 2.0);
+  CHECK(p.duration() == 2.0);
+  CHECK(p.clips[0].length() == 2.0);
+  p.set_speed("c1", 0.5);
+  CHECK(p.duration() == 8.0);
+  CHECK(p.clips[0].length() == 8.0);
+  CHECK_THROWS(p.set_speed("c1", 0.1));
+  CHECK_THROWS(p.set_speed("c1", 5.0));
+  CHECK_THROWS(p.set_speed("nope", 2.0));
+
+  const json j = p.to_json();
+  CHECK(j["clips"][0]["speed"] == 0.5);
+  const model::Project back = model::Project::from_json(j);
+  CHECK(back.clips[0].speed == 0.5);
+  CHECK(back.duration() == 8.0);
+
+  // Old projects without the field keep loading, and normal speed is not written out.
+  json old = j;
+  old["clips"][0].erase("speed");
+  CHECK(model::Project::from_json(old).clips[0].speed == 1.0);
+  json bad = j;
+  bad["clips"][0]["speed"] = 9;
+  CHECK_THROWS(model::Project::from_json(bad));
 }

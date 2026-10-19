@@ -1,3 +1,5 @@
+#include <unistd.h>
+
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <filesystem>
@@ -9,6 +11,8 @@
 #include "render/render.h"
 #include "tools/color.h"
 #include "tools/timeline.h"
+#include "util/activity.h"
+#include "util/base64.h"
 
 using namespace et;
 using Catch::Matchers::ContainsSubstring;
@@ -180,7 +184,7 @@ Rgb avg_rgb(const std::string& file, double t = 0) {
 }
 
 struct ColorFixture {
-  fs::path dir = fs::temp_directory_path() / "et_color";
+  fs::path dir = fs::temp_directory_path() / ("et_color_" + std::to_string(::getpid()));
   std::string orange = (dir / "orange.mp4").string(), gray = (dir / "gray.mp4").string(), redblue = (dir / "redblue.mp4").string();
 
   ColorFixture() {
@@ -377,4 +381,118 @@ TEST_CASE("MCP: color tools and preview_frame return an image") {
   REQUIRE(call("preview_frame", {{"time", 99}})["isError"] == true);
   REQUIRE(call("color_adjust", {{"saturation", 9}})["isError"] == true);
   REQUIRE(call("apply_lut", {{"path", "/Volumes/not mounted/look.cube"}})["content"][0]["text"].get<std::string>().find("drive") != std::string::npos);
+}
+
+TEST_CASE("MCP: preview_frames returns one contact sheet; preview_compare shows before/after") {
+  ColorFixture f;
+  mcp::Server server("t", "0");
+  auto session = std::make_shared<tools::Session>();
+  tools::register_timeline_tools(server, session);
+  tools::register_color_tools(server, session);
+  int id = 0;
+  auto call = [&](const char* name, json args) {
+    return server.handle({{"jsonrpc", "2.0"},
+                          {"id", ++id},
+                          {"method", "tools/call"},
+                          {"params", {{"name", name}, {"arguments", args}}}})["result"];
+  };
+  REQUIRE(call("create_project", {{"project_path", (f.dir / "p.json").string()}, {"width", 160}, {"height", 120}, {"fps", 10}})["isError"] == false);
+  REQUIRE(call("add_clip", {{"path", f.orange}})["isError"] == false);
+  REQUIRE(call("color_adjust", {{"saturation", 0}})["isError"] == false);
+
+  const auto sheet = call("preview_frames", {{"times", {0.2, 0.8, 1.4}}, {"max_width", 120}, {"columns", 3}});
+  REQUIRE(sheet["isError"] == false);
+  REQUIRE(sheet["content"][0]["type"] == "image");
+  const std::string sheet_path = (f.dir / "sheet.jpg").string();
+  std::ofstream(sheet_path, std::ios::binary) << util::unbase64(sheet["content"][0]["data"].get<std::string>());
+  const auto size = run({"ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height",
+                         "-of", "csv=p=0", sheet_path});
+  CHECK(size.out.find("360,90") == 0);  // three 120px cells side by side
+
+  // A single frame is still one image, and bad times are rejected.
+  REQUIRE(call("preview_frames", {{"times", {0.5}}})["isError"] == false);
+  REQUIRE(call("preview_frames", {{"times", {99}}})["isError"] == true);
+  REQUIRE(call("preview_frames", {{"times", {}}})["isError"] == true);
+
+  const auto cmp = call("preview_compare", {{"time", 0.5}, {"max_width", 80}});
+  REQUIRE(cmp["isError"] == false);
+  REQUIRE(cmp["content"][0]["type"] == "image");
+  const std::string cmp_path = (f.dir / "cmp.jpg").string();
+  std::ofstream(cmp_path, std::ios::binary) << util::unbase64(cmp["content"][0]["data"].get<std::string>());
+  const auto cmp_size = run({"ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height",
+                             "-of", "csv=p=0", cmp_path});
+  CHECK(cmp_size.out.find("160,60") == 0);  // two 80px halves
+  CHECK_THAT(cmp["content"][1]["text"].get<std::string>(), ContainsSubstring("left"));
+}
+
+TEST_CASE("render reports progress and can be cancelled mid-flight") {
+  ColorFixture f;
+  auto p = f.project(f.orange, 2);
+  const auto out = (f.dir / "progress.mp4").string();
+  {
+    activity::Recorder recorder;
+    render::render(p, {out, true, ""});
+    REQUIRE_FALSE(recorder.lines.empty());
+    CHECK_THAT(recorder.lines.back(), ContainsSubstring("100%"));
+  }
+  CHECK(fs::exists(out));
+
+  // A long enough render that cancelling on the first progress update really kills ffmpeg.
+  const std::string long_file = (f.dir / "long.mp4").string();
+  REQUIRE(run({"ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "color=c=blue:s=640x480:r=25:d=40", "-c:v", "libx264",
+               "-preset", "ultrafast", "-pix_fmt", "yuv420p", long_file}).exit_code == 0);
+  model::Project big;
+  big.width = 640;
+  big.height = 480;
+  big.fps = 25;
+  big.add_clip(big.add_asset({"", long_file, 40, true, false, 640, 480}).id, 0, 40);
+  const auto cancelled_out = (f.dir / "cancelled.mp4").string();
+  {
+    std::atomic<bool> cancel{false};
+    activity::Scope scope([&](const std::string&) { cancel = true; }, [&] { return cancel.load(); });
+    REQUIRE_THROWS_WITH(render::render(big, {cancelled_out, false, ""}), ContainsSubstring("cancelled"));
+  }
+  std::error_code ec;
+  const bool finished = fs::exists(cancelled_out, ec) && fs::file_size(cancelled_out, ec) > 100000;
+  CHECK_FALSE(finished);  // the partial file was never a finished render
+}
+TEST_CASE("MCP: apply_style applies presets and set_speed changes the rendered length") {
+  ColorFixture f;
+  mcp::Server server("t", "0");
+  auto session = std::make_shared<tools::Session>();
+  tools::register_timeline_tools(server, session);
+  tools::register_color_tools(server, session);
+  int id = 0;
+  auto call = [&](const char* name, json args) {
+    return server.handle({{"jsonrpc", "2.0"},
+                          {"id", ++id},
+                          {"method", "tools/call"},
+                          {"params", {{"name", name}, {"arguments", args}}}})["result"];
+  };
+  REQUIRE(call("create_project", {{"project_path", (f.dir / "p.json").string()}, {"width", 160}, {"height", 120}, {"fps", 10}})["isError"] == false);
+  REQUIRE(call("add_clip", {{"path", f.orange}})["isError"] == false);
+
+  REQUIRE(call("apply_style", {{"preset", "warm_cinematic"}})["isError"] == false);
+  const auto warm = session->get();
+  CHECK(warm.grade.warmth > 0.3);
+  CHECK(warm.grade.contrast > 1.0);
+  REQUIRE(call("apply_style", {{"preset", "black_and_white"}, {"clip_id", "c1"}})["isError"] == false);
+  CHECK(session->get().clips[0].grade.saturation == 0.0);
+  REQUIRE(call("apply_style", {{"preset", "nonsense"}})["isError"] == true);
+
+  // 2x speed halves the rendered file; 0.5x doubles it.
+  REQUIRE(call("set_speed", {{"clip_id", "c1"}, {"speed", 2.0}})["isError"] == false);
+  const auto fast_out = (f.dir / "fast.mp4").string();
+  REQUIRE(call("render_preview", {{"output_path", fast_out}})["isError"] == false);
+  const auto fast = run({"ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", fast_out});
+  CHECK(std::stod(fast.out) > 0.7);
+  CHECK(std::stod(fast.out) < 1.3);
+
+  REQUIRE(call("set_speed", {{"clip_id", "c1"}, {"speed", 0.5}})["isError"] == false);
+  const auto slow_out = (f.dir / "slow.mp4").string();
+  REQUIRE(call("render_preview", {{"output_path", slow_out}})["isError"] == false);
+  const auto slow = run({"ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", slow_out});
+  CHECK(std::stod(slow.out) > 3.2);
+  CHECK(std::stod(slow.out) < 4.8);
+  REQUIRE(call("set_speed", {{"clip_id", "c1"}, {"speed", 9}})["isError"] == true);
 }

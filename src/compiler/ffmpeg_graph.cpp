@@ -39,6 +39,23 @@ std::string audio_effects(const model::AudioProps& a, double length) {
   return f;
 }
 
+// atempo only accepts [0.5, 100] per instance, so extremes are split across a few stages.
+std::string atempo_chain(double speed) {
+  if (speed == 1.0) return "";
+  std::string out;
+  double remaining = speed;
+  while (remaining > 2.0) {
+    out += ",atempo=2";
+    remaining /= 2.0;
+  }
+  while (remaining < 0.5) {
+    out += ",atempo=0.5";
+    remaining /= 0.5;
+  }
+  out += ",atempo=" + num(remaining);
+  return out;
+}
+
 // Sidechain compressor ratio for each ducking strength.
 int duck_ratio(const std::string& strength) {
   if (strength == "light") return 3;
@@ -122,11 +139,13 @@ std::vector<std::string> compile(const model::Project& p, const Options& opt) {
     double start = 0;
     for (auto& c : p.clips) {
       if (opt.frame_time < start + c.length() - 1e-9) {
-        const double tl = opt.frame_time - start;
-        const double seek = c.in + std::max(0.0, tl - 3.0);  // decode only a few seconds before the frame
+        const double tl = opt.frame_time - start;              // output seconds into this clip
+        const double src_tl = tl * c.speed;                     // seconds into the source
+        const double ahead = std::max(0.0, src_tl - 3.0);       // decode only a few seconds before the frame
+        const double seek = c.in + ahead;
         segs.push_back({&c, seek, 0, c.out - seek});
-        frame_offset = start + (seek - c.in);
-        frame_local = tl - (seek - c.in);
+        frame_offset = start + ahead / c.speed;
+        frame_local = tl - ahead / c.speed;
         break;
       }
       start += c.length();
@@ -162,8 +181,9 @@ std::vector<std::string> compile(const model::Project& p, const Options& opt) {
     const int k = input_index[c.asset_id];
     const std::string id = std::to_string(i), pre = "pre" + id, v = "v" + id, au = "a" + id;
 
+    const std::string speed_v = c.speed == 1.0 ? "" : ",setpts=PTS/" + num(c.speed);
     st.push_back("[" + std::to_string(k) + ":v]trim=start=" + num(s.trim_in) + ":end=" + num(s.trim_out) +
-                 ",setpts=PTS-STARTPTS,fps=" + num(p.fps) + "[" + pre + "]");
+                 ",setpts=PTS-STARTPTS" + speed_v + ",fps=" + num(p.fps) + "[" + pre + "]");
     std::string cur = grade_stage(st, pre, p.grade, opt, "gp" + id);
     cur = grade_stage(st, cur, c.grade, opt, "gc" + id);
     st.push_back("[" + cur + "]scale=" + size + ":force_original_aspect_ratio=decrease,pad=" + size +
@@ -173,7 +193,8 @@ std::vector<std::string> compile(const model::Project& p, const Options& opt) {
     if (!frame) {
       if (a.has_audio) {
         st.push_back("[" + std::to_string(k) + ":a]atrim=start=" + num(s.trim_in) + ":end=" + num(s.trim_out) +
-                     ",asetpts=PTS-STARTPTS," + fmt + audio_effects(c.audio, c.length()) + "[" + au + "]");
+                     ",asetpts=PTS-STARTPTS," + fmt + atempo_chain(c.speed) + audio_effects(c.audio, c.length()) + "[" +
+                     au + "]");
       } else {
         st.push_back("anullsrc=r=" + std::to_string(p.sample_rate) + ":cl=stereo,atrim=duration=" + num(c.length()) +
                      ",asetpts=PTS-STARTPTS[" + au + "]");

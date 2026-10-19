@@ -114,6 +114,20 @@ void register_timeline_tools(mcp::Server& server, std::shared_ptr<Session> s) {
                      });
                    }});
 
+  server.add_tool({"set_speed",
+                   "Change a clip's playback speed: 2 = twice as fast (the clip becomes half as long on the timeline), "
+                   "0.5 = half speed (slow motion, twice as long). Range 0.25-4. Changing a clip's length moves "
+                   "everything after it, and subtitle/preview times on the output timeline shift with it, so re-check "
+                   "with preview_frames afterwards.",
+                   props({{"clip_id", kStr}, {"speed", kNum}}, {"clip_id", "speed"}),
+                   [s](const json& a) {
+                     return guarded([&] {
+                       s->get().set_speed(a.at("clip_id"), a.at("speed"));
+                       s->save();
+                       return s->get().to_json();
+                     });
+                   }});
+
   server.add_tool({"add_music",
                    "Add background music (any file with audio) starting at `start` seconds on the timeline. "
                    "in/out select the source range (default: whole file). volume_db is gain (negative = quieter).",

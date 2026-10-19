@@ -144,6 +144,11 @@ void Project::move_clip(const std::string& id, int index) {
   clips.insert(clips.begin() + index, copy);
 }
 
+void Project::set_speed(const std::string& id, double speed) {
+  if (!(speed >= 0.25 && speed <= 4.0)) throw invalid_argument("clip speed must be within [0.25, 4]");
+  clip_ref(id).speed = speed;
+}
+
 void Project::delete_clip(const std::string& id) {
   Clip& c = clip_ref(id);
   clips.erase(clips.begin() + (&c - clips.data()));
@@ -338,8 +343,10 @@ json Project::to_json() const {
                   {"has_audio", a.has_audio}, {"width", a.width}, {"height", a.height}});
   double t = 0;
   for (auto& c : clips) {
-    jc.push_back({{"id", c.id}, {"asset", c.asset_id}, {"in", c.in}, {"out", c.out}, {"start", t},
-                  {"audio", audio_json(c.audio)}, {"color", grade_json(c.grade)}});
+    json j = {{"id", c.id}, {"asset", c.asset_id}, {"in", c.in}, {"out", c.out}, {"start", t},
+              {"audio", audio_json(c.audio)}, {"color", grade_json(c.grade)}};
+    if (c.speed != 1.0) j["speed"] = c.speed;
+    jc.push_back(std::move(j));
     t += c.length();
   }
   for (auto& m : music)
@@ -373,9 +380,13 @@ Project Project::from_json(const json& j) {
   for (auto& a : j.value("assets", json::array()))
     p.assets.push_back({a["id"], a["path"], a["duration"], a["has_video"], a["has_audio"], a["width"], a["height"]});
   if (j.contains("color")) p.grade = grade_from(j["color"]);
-  for (auto& c : j.value("clips", json::array()))
+  for (auto& c : j.value("clips", json::array())) {
+    const double speed = c.value("speed", 1.0);
+    if (!(speed >= 0.25 && speed <= 4.0))
+      throw invalid_argument("clip " + c.value("id", std::string("?")) + ": speed must be within [0.25, 4]");
     p.clips.push_back({c["id"], c["asset"], c["in"], c["out"], audio_from(c.value("audio", json::object())),
-                       grade_from(c.value("color", json::object()))});
+                       grade_from(c.value("color", json::object())), speed});
+  }
   for (auto& m : j.value("music", json::array()))
     p.music.push_back({m["id"], m["asset"], m["in"], m["out"], m["start"], audio_from(m.value("audio", json::object()))});
   return p;
