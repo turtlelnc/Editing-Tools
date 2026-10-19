@@ -152,7 +152,13 @@ std::optional<SessionStore> SessionStore::open_dir(const fs::path& dir) {
     }
     store.messages_.push_back(std::move(m));
   }
-  store.image_seq_ = store.messages_.size() * 4;  // keep new image names clear of old ones
+  // Keep new image names clear of the ones already on disk.
+  std::error_code ec;
+  for (auto& entry : fs::directory_iterator(dir / "images", ec)) {
+    const std::string name = entry.path().stem().string();
+    if (name.size() == 5 && name.find_first_not_of("0123456789") == std::string::npos)
+      store.image_seq_ = std::max(store.image_seq_, static_cast<size_t>(std::stoul(name)) + 1);
+  }
   store.open_log();
   return store;
 }
@@ -199,10 +205,13 @@ std::vector<SessionInfo> SessionStore::list(const fs::path& root) {
     while (std::getline(in, line)) {
       json j = json::parse(line, nullptr, false);
       if (!j.is_object()) continue;
-      if (j.value("type", "message") == "meta") {
+      const std::string type = j.value("type", "message");
+      if (type == "meta") {
         info.title = j.value("title", "");
         info.created = j.value("created", "");
-      } else if (j.value("type", "") == "message") {
+      } else if (type == "title") {
+        info.title = j.value("title", "");
+      } else if (type == "message") {
         ++info.messages;
       }
     }

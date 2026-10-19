@@ -1,9 +1,11 @@
 #include <unistd.h>
 
 #include <atomic>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -14,6 +16,7 @@
 #include "agent/openai_chat.h"
 #include "agent/policy.h"
 #include "agent/prompt.h"
+#include "agent/review.h"
 #include "agent/session.h"
 #include "agent/toolbox.h"
 #include "mock_http.h"
@@ -383,3 +386,142 @@ TEST_CASE("agent: a 429 is retried and then succeeds") {
   CHECK(result.final_text == "after the retry");
   CHECK(h.server.request_count() == 2);
 }
+
+namespace {
+
+// Sets an environment variable for the duration of a test case (the CLI tests point EDITING_TOOLS_HOME at a temp
+// folder so they never touch the real ~/.editing-tools).
+struct EnvGuard {
+  std::string name, old;
+  bool had = false;
+  EnvGuard(const char* key, const std::string& value) : name(key) {
+    const char* p = std::getenv(key);
+    had = p != nullptr;
+    if (had) old = p;
+    setenv(key, value.c_str(), 1);
+  }
+  ~EnvGuard() {
+    if (had) setenv(name.c_str(), old.c_str(), 1);
+    else unsetenv(name.c_str());
+  }
+};
+
+std::vector<json> parse_events(const std::string& text) {
+  std::vector<json> events;
+  std::istringstream in(text);
+  std::string line;
+  while (std::getline(in, line)) {
+    if (line.find_first_not_of(" \t\r") == std::string::npos) continue;
+    json j = json::parse(line, nullptr, false);
+    REQUIRE_FALSE(j.is_discarded());
+    events.push_back(std::move(j));
+  }
+  return events;
+}
+
+}  // namespace
+
+TEST_CASE("agent cli: version, usage errors and session listing") {
+  const auto version = et::run({EDITING_AGENT_BIN, "--version"});
+  CHECK(version.exit_code == 0);
+  CHECK_THAT(version.out, ContainsSubstring("editing-agent"));
+
+  const auto no_task = et::run({EDITING_AGENT_BIN, "--provider", "openai", "--model", "m", "--api-key", "test"});
+  CHECK(no_task.exit_code == 2);
+  CHECK_THAT(no_task.err, ContainsSubstring("no task given"));
+
+  const auto bad_provider = et::run({EDITING_AGENT_BIN, "--provider", "nope", "--model", "m", "hello"});
+  CHECK(bad_provider.exit_code == 2);
+  CHECK_THAT(bad_provider.err, ContainsSubstring("unknown provider"));
+
+  const auto login = et::run({EDITING_AGENT_BIN, "login", "--provider", "openai"});
+  CHECK(login.exit_code == 2);
+  CHECK_THAT(login.err, ContainsSubstring("only applies to --provider codex"));
+
+  const fs::path root = fs::temp_directory_path() / ("et_agent_cli_" + std::to_string(::getpid()));
+  fs::remove_all(root);
+  { auto store = agent::SessionStore::create(root, "a saved edit"); }
+  {
+    EnvGuard home("EDITING_TOOLS_HOME", root.string());
+    const auto listed = et::run({EDITING_AGENT_BIN, "sessions", "--json"});
+    CHECK(listed.exit_code == 0);
+    const json arr = json::parse(listed.out);
+    REQUIRE(arr.is_array());
+    REQUIRE(arr.size() == 1);
+    CHECK(arr[0]["title"] == "a saved edit");
+  }
+  std::error_code ec;
+  fs::remove_all(root, ec);
+}
+
+TEST_CASE("agent cli: one-shot run against a scripted model, then resume the session") {
+  Dir dir;
+  test::MockServer server;
+  const fs::path root = dir.path / "home";
+  EnvGuard home("EDITING_TOOLS_HOME", root.string());
+
+  server.enqueue(sse_text("All done from the CLI."), 200, kSse);
+  const auto first = et::run({EDITING_AGENT_BIN, "--provider", "openai", "--model", "test-model", "--base-url",
+                              server.base_url(), "--workspace", dir.path.string(), "--json", "say hello"});
+  CHECK(first.exit_code == 0);
+  bool saw_start = false, saw_final = false;
+  for (const auto& event : parse_events(first.out)) {
+    if (event.value("event", "") == "start") saw_start = true;
+    if (event.value("event", "") == "final") {
+      saw_final = true;
+      CHECK(event["text"] == "All done from the CLI.");
+      CHECK(event["session"].is_string());
+    }
+  }
+  CHECK(saw_start);
+  CHECK(saw_final);
+  CHECK(server.request_count() == 1);
+  REQUIRE_THAT(server.request(0).body, ContainsSubstring("say hello"));
+
+  const auto sessions = agent::SessionStore::list(root);
+  REQUIRE(sessions.size() == 1);
+  CHECK(sessions[0].title == "say hello");
+  CHECK(sessions[0].messages >= 2);
+
+  // Resuming restores the history and keeps appending to the same session.
+  server.enqueue(sse_text("Continued."), 200, kSse);
+  const auto second = et::run({EDITING_AGENT_BIN, "--provider", "openai", "--model", "test-model", "--base-url",
+                               server.base_url(), "--workspace", dir.path.string(), "--resume", "last", "--json",
+                               "keep going"});
+  CHECK(second.exit_code == 0);
+  CHECK_THAT(server.request(1).body, ContainsSubstring("All done from the CLI."));
+  const auto after = agent::SessionStore::list(root);
+  REQUIRE(after.size() == 1);
+  CHECK(after[0].id == sessions[0].id);
+  CHECK(after[0].messages > sessions[0].messages);
+}
+
+TEST_CASE("agent: review_edit extracts frames and reports issues") {
+  Dir dir;
+  Harness h(dir);
+  CHECK_FALSE(h.toolbox->execute({"c1", "create_project", {{"project_path", dir("p.json")}, {"width", 160}, {"height", 120}, {"fps", 10}}}).is_error);
+  CHECK_FALSE(h.toolbox->execute({"c2", "add_clip", {{"path", dir.video}}}).is_error);
+
+  h.sse(sse_text(R"({"issues":[{"severity":"high","at":1.5,"message":"subtitle covers a face"},)"
+                 R"({"severity":"low","at":-1,"message":"music is a little loud"}]})"));
+  const auto project = h.session->get().to_json();
+  const auto issues = agent::review_edit(*h.provider, project, "make it warm", "subtitles", 4);
+
+  REQUIRE(issues.size() == 2);
+  CHECK(issues[0].severity == "high");
+  CHECK(issues[0].at == 1.5);
+  CHECK_THAT(issues[0].message, ContainsSubstring("subtitle"));
+  const json body = json::parse(h.server.last_request().body);
+  CHECK_FALSE(body.contains("tools"));  // the reviewer cannot change anything
+  CHECK_THAT(body.dump(), ContainsSubstring("data:image/jpeg;base64,"));  // it really looked at frames
+  CHECK_THAT(body.dump(), ContainsSubstring("Frames follow in this order"));
+}
+
+TEST_CASE("agent: review_edit refuses an empty timeline") {
+  Dir dir;
+  Harness h(dir);
+  model::Project empty;
+  CHECK_THROWS_AS(agent::review_edit(*h.provider, empty.to_json(), "task", "", 3), std::invalid_argument);
+}
+
+

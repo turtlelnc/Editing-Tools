@@ -1,6 +1,7 @@
 #include "agent/review.h"
 
 #include <algorithm>
+#include <cmath>
 #include <stdexcept>
 
 #include "agent/toolbox.h"
