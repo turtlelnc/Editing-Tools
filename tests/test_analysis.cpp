@@ -71,7 +71,7 @@ struct Fixtures {
               "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", talk},
              talk);
     generate({"ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "color=black:size=64x64:rate=10:duration=0.3",
-              "-pix_fmt", "yuv420p", tiny},
+              "-f", "lavfi", "-i", "sine=440:duration=0.3", "-shortest", "-pix_fmt", "yuv420p", tiny},
              tiny);
   }
   ~Fixtures() { fs::remove_all(dir); }
@@ -255,6 +255,20 @@ TEST_CASE("analysis: auto_rough_cut validates its arguments and never leaves a h
                                               {"min_segment", 0.5}}),
                     ContainsSubstring("no segments survived"));
   CHECK_FALSE(fs::exists(project));
+
+  // The silent mode needs audio; scene-only cutting does not.
+  const fs::path no_audio_project = f.dir / "no_audio.json";
+  CHECK_THROWS_WITH(h.call("auto_rough_cut", {{"path", f.scenes},
+                                              {"create_project", true},
+                                              {"project_path", no_audio_project.string()}}),
+                    ContainsSubstring("audio"));
+  CHECK_FALSE(fs::exists(no_audio_project));
+  // Scene-only cutting needs no audio: one clip per shot (the fixture has two shots).
+  auto scene_only = h.call("auto_rough_cut", {{"path", f.scenes},
+                                              {"mode", "scene"},
+                                              {"create_project", true},
+                                              {"project_path", (f.dir / "scene_only.json").string()}});
+  CHECK(scene_only["clips_added"].get<int>() == 2);
 }
 
 TEST_CASE("analysis: detect tools reject bad input") {

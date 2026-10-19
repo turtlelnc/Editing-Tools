@@ -309,6 +309,9 @@ json auto_rough_cut(mcp::Server& server, const json& a) {
   if (!first_stream(info, "video"))
     throw mcp::ToolError("auto_rough_cut needs a video source: " + path +
                          " has no video stream (use add_music for audio-only files)");
+  if (mode != "scene" && !first_stream(info, "audio"))
+    throw mcp::ToolError("auto_rough_cut in mode=" + mode + " needs an audio stream: " + path +
+                         " has no audio (use mode=scene to cut at scene changes only)");
 
   std::vector<Span> segments;
   if (mode == "silence") {
