@@ -85,7 +85,7 @@ $et --project p.json render_export --output_path out.mp4
 |---|---|---|
 | `openai` | `OPENAI_API_KEY=…` 或 `--api-key` | 任何 OpenAI 兼容的 `/chat/completions`：OpenAI、DeepSeek、本地 llama.cpp / Ollama、Qwen-VL。**必须显式 `--model`**。 |
 | `anthropic` | `ANTHROPIC_API_KEY=…` 或 `--api-key` | Claude Messages API，默认模型 `claude-sonnet-5-5`。 |
-| `codex` | 先跑一次 `editing-agent login` | 用 ChatGPT/Codex 订阅登录（设备码），凭证存 `~/.editing-tools/auth.json`，不碰 `~/.codex`。 |
+| `codex` | 先跑一次 `editing-agent login` | 用 ChatGPT/Codex 订阅登录（设备码），凭证存 `~/.editing-tools/auth.json`，不碰 `~/.codex`。ChatGPT 后端对部分地区返回 `403 Country not supported`；需要可访问的线路，curl 会自动使用 `https_proxy` / `HTTPS_PROXY` 环境变量。 |
 
 要选**能看图**的模型：`preview_frame` 的效果靠模型自己看图判断，纯文字模型只能做不看图的部分。`--base-url` 可以指到本地服务。
 
@@ -131,9 +131,11 @@ $et --resume last "继续，把配乐再压低一点"              # 恢复上�
 
 ### 验证状态
 
-- 测试全部用本地模拟 HTTP 服务端（`tests/mock_http.h`），覆盖：三种 provider 的请求格式和 SSE 解析、工具循环、路径权限、覆盖保护、会话保存/恢复、上下文压缩、评审、CLI 参数和退出码。
+- 一共 77 个测试，其中 agent 相关 23 个；模型请求全部打到本地模拟 HTTP 服务端（`tests/mock_http.h`），覆盖：三种 provider 的请求格式和 SSE 解析、工具循环、路径权限、覆盖保护、会话保存/恢复、上下文压缩、评审、CLI 参数和退出码。
+- 其中一条是完整端到端：脚本模型依次调用 `create_project` → `add_clip` → `color_adjust` → `render_export`，真的渲染出一个 mp4，再用 `ffprobe` 校验时长和保存下来的时间线。
 - 没有真实 API Key，所以真实联调需要你跑一条冒烟：
   `OPENAI_API_KEY=… editing-agent --provider openai --model <看图模型> --project p.json "把 a.mp4 前 5 秒调暖并加字幕，导出 out.mp4"`
+- `login` 的设备码流程已经用模拟授权服务端验证；真实 `auth.openai.com` 在本机所在地区返回 403（见上表），需要换线路才能真连。
 
 ## 演示脚本
 

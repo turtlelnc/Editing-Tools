@@ -72,6 +72,7 @@ struct UsageError : std::runtime_error {
 struct Options {
   std::string mode = "run";  // run | chat | login | sessions
   std::string provider = "openai", model, base_url, api_key, project, workspace, resume, notes;
+  bool provider_given = false;
   std::vector<std::string> allow, task;
   int max_steps = 40;
   bool overwrite = false, no_export = false, json = false, quiet = false, yes = false, help = false, version = false;
@@ -122,7 +123,10 @@ Options parse(int argc, char** argv) {
         has_value = true;
       }
       auto val = [&]() { return has_value ? value : need(name.c_str()); };
-      if (name == "provider") o.provider = val();
+      if (name == "provider") {
+        o.provider = val();
+        o.provider_given = true;
+      }
       else if (name == "model") o.model = val();
       else if (name == "base-url") o.base_url = val();
       else if (name == "api-key") o.api_key = val();
@@ -262,7 +266,9 @@ std::string join(const std::vector<std::string>& parts) {
 
 // ---------------------------------------------------------------------------------------------------------------
 
-int do_login(const Options& o) {
+int do_login(const Options& o_in) {
+  Options o = o_in;
+  if (!o.provider_given) o.provider = "codex";  // `editing-agent login` means the ChatGPT flow unless told otherwise
   if (o.provider != "codex") {
     std::cerr << "login only applies to --provider codex; for API providers set OPENAI_API_KEY or ANTHROPIC_API_KEY\n";
     return 2;
@@ -477,7 +483,12 @@ int run_mode(const Options& o) {
 
   // Ask before replacing a finished file. Chat mode can prompt; a one-shot run was explicit about wanting output.
   app.toolbox->set_approver([&o](const std::string& tool, const json& args, std::string& reason) {
-    if (tool != "render_export" || o.yes || o.mode != "chat") return true;
+    if (tool != "render_export") return true;
+    if (o.no_export) {
+      reason = "this run is a --no-export dry run; do not write files. Describe the edit instead.";
+      return false;
+    }
+    if (o.yes || o.mode != "chat") return true;
     if (!isatty(STDIN_FILENO)) return true;  // piped chat cannot answer
     std::cerr << "\nrender " << args.value("output_path", std::string("?")) << "? [y/N] " << std::flush;
     std::string line;

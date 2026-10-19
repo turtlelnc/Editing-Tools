@@ -22,6 +22,7 @@
 #include "mock_http.h"
 #include "process.h"
 #include "tools/all.h"
+#include "tools/media.h"
 #include "util/base64.h"
 
 using namespace et;
@@ -524,4 +525,58 @@ TEST_CASE("agent: review_edit refuses an empty timeline") {
   CHECK_THROWS_AS(agent::review_edit(*h.provider, empty.to_json(), "task", "", 3), std::invalid_argument);
 }
 
+TEST_CASE("agent: a scripted model drives a full edit and renders a real file") {
+  Dir dir;
+  Harness h(dir);
+  const std::string project = dir("p.json"), output = dir("out.mp4");
+
+  h.sse(sse_call("c1", "create_project", {{"project_path", project}, {"width", 160}, {"height", 120}, {"fps", 10}}));
+  h.sse(sse_call("c2", "add_clip", {{"path", dir.video}}));
+  h.sse(sse_call("c3", "color_adjust", {{"warmth", 0.25}, {"contrast", 1.1}}));
+  h.sse(sse_call("c4", "render_export", {{"output_path", output}}));
+  h.sse(sse_text("Done: warm grade applied, exported to out.mp4."));
+  h.user("Grade it warm and export.");
+
+  agent::AgentLoop loop(*h.provider, *h.toolbox);
+  const auto result = loop.run(h.convo);
+
+  REQUIRE(result.final_text == "Done: warm grade applied, exported to out.mp4.");
+  REQUIRE(fs::exists(output));
+  CHECK(fs::file_size(output) > 1000);
+  const json probed = tools::probe_media(output);
+  CHECK(probed["duration_sec"].get<double>() > 2.5);
+  CHECK(probed["duration_sec"].get<double>() < 3.6);
+
+  // The grade really reached the project that was saved along the way.
+  std::ifstream f(project);
+  REQUIRE(f);
+  const json pj = json::parse(f);
+  CHECK(pj["color"]["warmth"] == 0.25);
+}
+
+TEST_CASE("agent cli: --no-export refuses render_export even when the model asks") {
+  Dir dir;
+  test::MockServer server;
+  const fs::path root = dir.path / "home";
+  EnvGuard home("EDITING_TOOLS_HOME", root.string());
+  const std::string project = dir("p.json"), output = dir("out.mp4");
+
+  server.enqueue(sse_call("c1", "create_project", {{"project_path", project}, {"width", 160}, {"height", 120}, {"fps", 10}}), 200, kSse);
+  server.enqueue(sse_call("c2", "add_clip", {{"path", dir.video}}), 200, kSse);
+  server.enqueue(sse_call("c3", "render_export", {{"output_path", output}}), 200, kSse);
+  server.enqueue(sse_text("I did not export (dry run)."), 200, kSse);
+
+  const auto r = et::run({EDITING_AGENT_BIN, "--provider", "openai", "--model", "m", "--base-url", server.base_url(),
+                          "--workspace", dir.path.string(), "--no-export", "--json", "grade and export"});
+  CHECK(r.exit_code == 0);
+  CHECK_FALSE(fs::exists(output));
+  REQUIRE(server.request_count() == 4);
+  // The model was told why the render was refused, as a normal tool error it can react to.
+  const json body = json::parse(server.request(3).body);
+  bool saw_refusal = false;
+  for (const auto& m : body["messages"])
+    if (m.value("role", "") == "tool" && m["content"].get<std::string>().find("--no-export") != std::string::npos)
+      saw_refusal = true;
+  CHECK(saw_refusal);
+}
 
