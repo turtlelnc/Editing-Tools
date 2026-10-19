@@ -424,6 +424,10 @@ std::vector<json> parse_events(const std::string& text) {
 }  // namespace
 
 TEST_CASE("agent cli: version, usage errors and session listing") {
+  const fs::path root = fs::temp_directory_path() / ("et_agent_cli_" + std::to_string(::getpid()));
+  fs::remove_all(root);
+  EnvGuard home("EDITING_TOOLS_HOME", root.string());
+
   const auto version = et::run({EDITING_AGENT_BIN, "--version"});
   CHECK(version.exit_code == 0);
   CHECK_THAT(version.out, ContainsSubstring("editing-agent"));
@@ -440,11 +444,11 @@ TEST_CASE("agent cli: version, usage errors and session listing") {
   CHECK(login.exit_code == 2);
   CHECK_THAT(login.err, ContainsSubstring("only applies to --provider codex"));
 
-  const fs::path root = fs::temp_directory_path() / ("et_agent_cli_" + std::to_string(::getpid()));
-  fs::remove_all(root);
+  // Bad usage must not leave an empty session behind.
+  CHECK(agent::SessionStore::list(root).empty());
+
   { auto store = agent::SessionStore::create(root, "a saved edit"); }
   {
-    EnvGuard home("EDITING_TOOLS_HOME", root.string());
     const auto listed = et::run({EDITING_AGENT_BIN, "sessions", "--json"});
     CHECK(listed.exit_code == 0);
     const json arr = json::parse(listed.out);

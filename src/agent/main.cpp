@@ -424,6 +424,30 @@ int run_mode(const Options& o) {
   app.workspace = fs::absolute(workspace.empty() ? fs::current_path() : fs::path(workspace));
   if (!fs::is_directory(app.workspace)) throw UsageError("workspace is not a folder: " + app.workspace.string());
 
+  // Validate everything that can fail cheaply before creating a session, so a typo or a missing key does not
+  // leave an empty session behind in `editing-agent sessions`.
+  std::string task;
+  if (o.mode == "run") {
+    task = join(o.task);
+    if (task.empty() && !isatty(STDIN_FILENO)) {
+      std::ostringstream s;
+      s << std::cin.rdbuf();
+      task = trim(s.str());
+    }
+    if (task.empty()) throw UsageError("no task given (pass one as an argument, or pipe it on stdin)");
+  }
+
+  et::agent::ProviderConfig provider_cfg;
+  provider_cfg.kind = o.provider;
+  provider_cfg.model = o.model;
+  provider_cfg.base_url = o.base_url;
+  provider_cfg.api_key = o.api_key;
+  try {
+    app.provider = et::agent::make_provider(provider_cfg);
+  } catch (const std::invalid_argument& e) {
+    throw UsageError(e.what());
+  }
+
   if (!resume_dir.empty()) {
     auto store = et::agent::SessionStore::open_dir(resume_dir);
     if (!store) throw UsageError("session folder is damaged: " + resume_dir.string());
@@ -461,17 +485,6 @@ int run_mode(const Options& o) {
     policy_cfg.roots.push_back(fs::path(app.project_path).parent_path());
   }
   policy_cfg.overwrite = o.overwrite;
-
-  et::agent::ProviderConfig pc;
-  pc.kind = o.provider;
-  pc.model = o.model;
-  pc.base_url = o.base_url;
-  pc.api_key = o.api_key;
-  try {
-    app.provider = et::agent::make_provider(pc);
-  } catch (const std::invalid_argument& e) {
-    throw UsageError(e.what());
-  }
 
   try {
     app.toolbox = std::make_unique<et::agent::ToolBox>(app.session, et::agent::Policy(policy_cfg));
@@ -568,13 +581,6 @@ int run_mode(const Options& o) {
   };
 
   if (o.mode == "run") {
-    std::string task = join(o.task);
-    if (task.empty() && !isatty(STDIN_FILENO) && !o.help) {
-      std::ostringstream s;
-      s << std::cin.rdbuf();
-      task = trim(s.str());
-    }
-    if (task.empty()) throw UsageError("no task given (pass one as an argument, or pipe it on stdin)");
     if (app.store->title().empty()) app.store->set_title(et::util::truncate_utf8(task, 100));
     try {
       auto result = run_turn(app, task);
