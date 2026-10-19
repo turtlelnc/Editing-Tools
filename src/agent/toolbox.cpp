@@ -63,7 +63,12 @@ json compact_project(const json& p) {
 
   json clips = json::array();
   for (auto& c : p.value("clips", json::array())) {
-    json o = {{"id", c["id"]}, {"asset", c["asset"]}, {"in", c["in"]}, {"out", c["out"]}, {"start", c["start"]}};
+    const double speed = c.value("speed", 1.0);
+    // "start"/"length" are timeline seconds (speed applied), "in"/"out" are source seconds: spell out both so the
+    // model does not mistake a sped-up clip for overlapping the next one.
+    json o = {{"id", c["id"]}, {"asset", c["asset"]}, {"in", c["in"]}, {"out", c["out"]},
+              {"start", c["start"]}, {"length", (c["out"].get<double>() - c["in"].get<double>()) / speed}};
+    if (speed != 1.0) o["speed"] = speed;
     json audio = c.value("audio", json::object()), color = c.value("color", json::object());
     drop_defaults(audio, kAudioDefaults);
     drop_defaults(color, kColorDefaults);

@@ -246,6 +246,14 @@ TEST_CASE("agent: tool results are compacted so long sessions stay readable") {
   CHECK(compact2["clips"][0]["color"]["warmth"] == 0.3);
   CHECK(compact2["clips"][0]["audio"]["denoise"] == true);
   CHECK_FALSE(compact2["clips"][0]["audio"].contains("fade_in"));
+
+  // Speed is spelled out, and the timeline length is computed with it.
+  json sped = project;
+  sped["clips"][0]["speed"] = 2.0;
+  const json compact3 = agent::compact_project(sped);
+  CHECK(compact3["clips"][0]["speed"] == 2.0);
+  CHECK(compact3["clips"][0]["length"] == 2.0);
+  CHECK(compact["clips"][0]["length"] == 4.0);
 }
 
 TEST_CASE("agent: sessions are saved, listed and resumed with their images") {
