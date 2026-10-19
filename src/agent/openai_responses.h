@@ -27,6 +27,8 @@ class ResponsesStreamParser {
   void feed_line(const std::string& line);
   Completion finish();
   bool done() const { return done_; }
+  // The message from a response.failed / error event, empty when the stream did not fail.
+  const std::string& error() const { return error_; }
 
  private:
   std::function<void(const std::string&)> on_text_;
@@ -36,6 +38,7 @@ class ResponsesStreamParser {
   std::vector<std::string> ids_;
   std::vector<std::string> names_;
   bool done_ = false;
+  std::string error_;
 };
 
 }  // namespace et::agent

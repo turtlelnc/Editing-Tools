@@ -31,6 +31,10 @@ OpenAiChat::OpenAiChat(ProviderConfig cfg) : cfg_(std::move(cfg)) {
   if (cfg_.base_url.empty()) cfg_.base_url = "https://api.openai.com/v1";
   while (!cfg_.base_url.empty() && cfg_.base_url.back() == '/') cfg_.base_url.pop_back();
   if (cfg_.model.empty()) throw std::invalid_argument("--model is required for the openai provider");
+  // Local OpenAI-compatible servers (Ollama, llama.cpp) need no key; the real API does.
+  if (cfg_.api_key.empty() && cfg_.base_url.rfind("http://127.0.0.1", 0) != 0 &&
+      cfg_.base_url.rfind("http://localhost", 0) != 0)
+    throw std::invalid_argument("the openai provider needs OPENAI_API_KEY (or --api-key); for a local server pass --base-url");
 }
 
 json OpenAiChat::build_request(const std::vector<Message>& messages, const std::vector<ToolSpec>& tools) const {
