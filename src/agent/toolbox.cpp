@@ -187,6 +187,8 @@ ToolResult ToolBox::run(const ToolCall& call) {
   for (auto& r : tool->input_schema["required"])
     if (!args.contains(r.get<std::string>())) throw ToolError("missing required argument: " + r.get<std::string>());
   if (call.name == "preview_frame" && !args.contains("max_width")) args["max_width"] = 768;  // keep model input small
+  if (call.name == "preview_frames" && !args.contains("max_width")) args["max_width"] = 480;
+  if (call.name == "preview_compare" && !args.contains("max_width")) args["max_width"] = 640;
   args = policy_.check(call.name, args);
 
   if (approver_ && call.name == "render_export") {

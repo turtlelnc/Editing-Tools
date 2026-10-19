@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <stdexcept>
 
+#include "util/activity.h"
 #include "util/utf8.h"
 
 namespace et::agent {
@@ -127,6 +128,18 @@ LoopResult AgentLoop::run(std::vector<Message>& messages, const LoopEvents& even
     if (events.on_message) events.on_message(messages.back());
   };
 
+  long tokens_used = 0;
+  int consecutive_errors = 0;
+  std::string last_failure;
+  int repeats = 0;
+
+  auto stop_reason = [&]() -> std::string {
+    if (result.hit_budget) return "token budget";
+    if (result.hit_error_limit) return "repeated tool failures";
+    if (cancelled_) return "cancelled";
+    return "step limit";
+  };
+
   for (int step = 1; step <= cfg_.max_steps; ++step) {
     if (cancelled_) {
       result.cancelled = true;
@@ -146,6 +159,7 @@ LoopResult AgentLoop::run(std::vector<Message>& messages, const LoopEvents& even
     result.steps = step;
     result.input_tokens += c.input_tokens;
     result.output_tokens += c.output_tokens;
+    tokens_used += c.input_tokens + c.output_tokens;
 
     Message assistant;
     assistant.role = Message::Role::Assistant;
@@ -156,6 +170,26 @@ LoopResult AgentLoop::run(std::vector<Message>& messages, const LoopEvents& even
     if (c.calls.empty()) {
       result.final_text = c.text;
       return result;
+    }
+
+    // A budget stop still has to answer the calls it refuses to run, or the next request would be invalid.
+    auto skip_remaining = [&](const std::string& why) {
+      for (const ToolCall& call : c.calls) {
+        Message skipped;
+        skipped.role = Message::Role::Tool;
+        skipped.call_id = call.id;
+        skipped.tool_name = call.name;
+        skipped.text = "not run: " + why;
+        skipped.is_error = true;
+        append(std::move(skipped));
+      }
+    };
+
+    if (cfg_.max_tokens > 0 && tokens_used >= cfg_.max_tokens) {
+      result.hit_budget = true;
+      if (events.notice) events.notice("token budget reached (" + std::to_string(tokens_used) + "); wrapping up");
+      skip_remaining("the token budget for this turn was reached");
+      break;
     }
 
     for (const ToolCall& call : c.calls) {
@@ -172,8 +206,11 @@ LoopResult AgentLoop::run(std::vector<Message>& messages, const LoopEvents& even
         return result;
       }
       if (events.tool_start) events.tool_start(call);
+      // Renders and analysis report progress through this hook, and stop when the turn is cancelled.
+      activity::Scope activity(events.notice, [this] { return cancelled_.load(); });
       ToolResult tr = toolbox_.execute(call);
       if (events.tool_done) events.tool_done(call, tr);
+
       Message tm;
       tm.role = Message::Role::Tool;
       tm.call_id = call.id;
@@ -181,16 +218,44 @@ LoopResult AgentLoop::run(std::vector<Message>& messages, const LoopEvents& even
       tm.text = tr.text;
       tm.images = tr.images;
       tm.is_error = tr.is_error;
+      if (tr.is_error) {
+        const std::string signature = call.name + "\x1f" + util::dump_json(call.arguments);
+        if (signature == last_failure) {
+          ++repeats;
+        } else {
+          last_failure = signature;
+          repeats = 1;
+        }
+        if (repeats >= 2)
+          tm.text += "\n[hint: this exact call has now failed " + std::to_string(repeats) +
+                     " times in this turn. Change the arguments or the approach before trying again.]";
+        ++consecutive_errors;
+      } else {
+        consecutive_errors = 0;
+        last_failure.clear();
+        repeats = 0;
+      }
       append(std::move(tm));
     }
-  }
 
-  result.hit_max_steps = true;
+    if (consecutive_errors >= cfg_.max_consecutive_errors) {
+      result.hit_error_limit = true;
+      if (events.notice) events.notice("too many failed tool calls in a row; wrapping up");
+      break;
+    }
+    if (cancelled_) {
+      result.cancelled = true;
+      return result;
+    }
+  }
   if (cancelled_) {
     result.cancelled = true;
     return result;
   }
-  // Ran out of steps: one last call without tools, so the turn ends with words instead of a dangling request.
+  if (result.steps >= cfg_.max_steps && !result.hit_budget && !result.hit_error_limit) result.hit_max_steps = true;
+
+  // One last call without tools, so the turn ends with words instead of a dangling request.
+  if (events.notice) events.notice("wrapping up (" + stop_reason() + ")");
   CompleteOptions opt;
   opt.on_text_delta = events.text_delta;
   opt.cancelled = [this] { return cancelled_.load(); };

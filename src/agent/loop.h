@@ -21,15 +21,19 @@ struct LoopEvents {
 };
 
 struct LoopConfig {
-  int max_steps = 40;                  // model calls per turn before the loop stops and asks for a wrap-up
+  int max_steps = 40;                   // model calls per turn before the loop stops and asks for a wrap-up
+  long max_tokens = 0;                  // soft budget for the whole turn (input+output); 0 = unlimited
+  int max_consecutive_errors = 6;       // stop and wrap up after this many failed tool calls in a row
   size_t compact_after_chars = 200000;  // roughly 50k tokens; older turns are summarized above this
   size_t keep_recent_messages = 10;     // never summarize this many of the newest messages
 };
 
 struct LoopResult {
   std::string final_text;
-  int steps = 0;          // model calls made
+  int steps = 0;  // model calls made
   bool hit_max_steps = false;
+  bool hit_budget = false;       // stopped because the token budget was reached
+  bool hit_error_limit = false;  // stopped because tool calls kept failing
   bool cancelled = false;
   long input_tokens = 0, output_tokens = 0;
 };

@@ -60,6 +60,11 @@ struct Dir {
 
 constexpr const char* kSse = "text/event-stream";
 
+std::string sse_usage(long input, long output) {
+  const json chunk = {{"choices", json::array()}, {"usage", {{"prompt_tokens", input}, {"completion_tokens", output}}}};
+  return "data: " + chunk.dump() + "\n\n";
+}
+
 std::string sse_text(const std::string& text) {
   json chunk = {{"choices", json::array({{{"index", 0}, {"delta", {{"content", text}}}, {"finish_reason", nullptr}}})}};
   json fin = {{"choices", json::array({{{"index", 0}, {"delta", json::object()}, {"finish_reason", "stop"}}})}};
@@ -520,7 +525,7 @@ TEST_CASE("agent: review_edit extracts frames and reports issues") {
   const json body = json::parse(h.server.last_request().body);
   CHECK_FALSE(body.contains("tools"));  // the reviewer cannot change anything
   CHECK_THAT(body.dump(), ContainsSubstring("data:image/jpeg;base64,"));  // it really looked at frames
-  CHECK_THAT(body.dump(), ContainsSubstring("Frames follow in this order"));
+  CHECK_THAT(body.dump(), ContainsSubstring("contact sheet"));
 }
 
 TEST_CASE("agent: review_edit refuses an empty timeline") {
@@ -629,5 +634,112 @@ TEST_CASE("agent cli: a long non-ASCII task is stored without breaking the sessi
   CHECK(et::util::valid_utf8(sessions[0].title));
   CHECK(sessions[0].title.size() <= 100);
   CHECK_THAT(sessions[0].title, ContainsSubstring("把这段素材"));
+}
+
+TEST_CASE("agent: a token budget stops the turn with a wrap-up instead of more tools") {
+  Dir dir;
+  Harness h(dir);
+  const std::string project = dir("p.json");
+  h.sse(sse_call("c1", "create_project", {{"project_path", project}}) + sse_usage(900, 300));
+  h.sse(sse_text("Stopping: the token budget for this turn is used up.") + sse_usage(500, 40));
+  h.user("make a project");
+  agent::LoopConfig cfg;
+  cfg.max_tokens = 1000;
+  agent::AgentLoop loop(*h.provider, *h.toolbox, cfg);
+  const auto result = loop.run(h.convo);
+  CHECK(result.hit_budget);
+  CHECK_FALSE(result.hit_max_steps);
+  CHECK(result.steps == 2);
+  CHECK_THAT(result.final_text, ContainsSubstring("budget"));
+  CHECK_FALSE(fs::exists(project));  // the refused tool call was never run
+  REQUIRE(h.server.request_count() == 2);
+  const json wrap = json::parse(h.server.request(1).body);
+  CHECK_FALSE(wrap.contains("tools"));  // the wrap-up cannot call tools
+  // The log stays valid: the refused call got an answer.
+  bool saw_skipped = false;
+  for (const auto& m : h.convo)
+    if (m.role == agent::Message::Role::Tool && m.is_error && m.text.find("budget") != std::string::npos)
+      saw_skipped = true;
+  CHECK(saw_skipped);
+}
+
+TEST_CASE("agent: repeating the same failing call earns a hint, and enough failures stop the turn") {
+  Dir dir;
+  Harness h(dir);
+  h.sse(sse_call("c1", "delete_clip", {{"clip_id", "nope"}}));
+  h.sse(sse_call("c2", "delete_clip", {{"clip_id", "nope"}}));
+  h.sse(sse_call("c3", "delete_clip", {{"clip_id", "nope"}}));
+  h.sse(sse_text("I keep failing; let me stop and ask."));
+  h.user("delete that clip");
+
+  agent::LoopConfig cfg;
+  cfg.max_consecutive_errors = 3;
+  agent::AgentLoop loop(*h.provider, *h.toolbox, cfg);
+  const auto result = loop.run(h.convo);
+
+  CHECK(result.hit_error_limit);
+  CHECK_THAT(result.final_text, ContainsSubstring("stop"));
+  REQUIRE(h.server.request_count() == 4);  // three failures and a wrap-up
+  const json second = json::parse(h.server.request(1).body);
+  const json third = json::parse(h.server.request(2).body);
+  const std::string third_text = third["messages"].back()["content"].get<std::string>();
+  CHECK_THAT(third_text, ContainsSubstring("failed 2 times"));
+  // The wrap-up request carries the last failure and no tools.
+  const json wrap = json::parse(h.server.request(3).body);
+  CHECK_FALSE(wrap.contains("tools"));
+  CHECK_THAT(second.dump(), ContainsSubstring("nope"));
+}
+
+TEST_CASE("agent cli: --self-review refuses an export when the reviewer finds a problem") {
+  Dir dir;
+  test::MockServer server;
+  const fs::path root = dir.path / "home";
+  EnvGuard home("EDITING_TOOLS_HOME", root.string());
+  const std::string project = dir("p.json"), output = dir("out.mp4");
+
+  server.enqueue(sse_call("c1", "create_project", {{"project_path", project}, {"width", 160}, {"height", 120}, {"fps", 10}}), 200, kSse);
+  server.enqueue(sse_call("c2", "add_clip", {{"path", dir.video}}), 200, kSse);
+  server.enqueue(sse_call("c3", "render_export", {{"output_path", output}}), 200, kSse);
+  // The self-review call: it gets frames and no tools; report one issue.
+  server.enqueue(sse_text(R"({"issues":[{"severity":"high","at":1.0,"message":"the clip is far too dark"}]})"), 200, kSse);
+  server.enqueue(sse_text("The review found the clip is too dark; I will fix it before exporting."), 200, kSse);
+
+  const auto r = et::run({EDITING_AGENT_BIN, "--provider", "openai", "--model", "m", "--base-url", server.base_url(),
+                          "--workspace", dir.path.string(), "--self-review", "--json", "make it brighter and export"});
+  CHECK(r.exit_code == 0);
+  CHECK_FALSE(fs::exists(output));  // the export was refused
+  REQUIRE(server.request_count() == 5);
+  // The reviewer saw a contact sheet, not the whole toolset.
+  const json review = json::parse(server.request(3).body);
+  CHECK_FALSE(review.contains("tools"));
+  CHECK_THAT(review.dump(), ContainsSubstring("data:image/jpeg;base64,"));
+  // The model was told what to fix.
+  const json after = json::parse(server.request(4).body);
+  bool saw_refusal = false;
+  for (const auto& m : after["messages"])
+    if (m.value("role", "") == "tool" && m["content"].get<std::string>().find("self-review found issues") != std::string::npos)
+      saw_refusal = true;
+  CHECK(saw_refusal);
+}
+
+TEST_CASE("agent cli: --self-review lets a clean export through") {
+  Dir dir;
+  test::MockServer server;
+  const fs::path root = dir.path / "home";
+  EnvGuard home("EDITING_TOOLS_HOME", root.string());
+  const std::string project = dir("p.json"), output = dir("out.mp4");
+
+  server.enqueue(sse_call("c1", "create_project", {{"project_path", project}, {"width", 160}, {"height", 120}, {"fps", 10}}), 200, kSse);
+  server.enqueue(sse_call("c2", "add_clip", {{"path", dir.video}}), 200, kSse);
+  server.enqueue(sse_call("c3", "render_export", {{"output_path", output}}), 200, kSse);
+  server.enqueue(sse_text(R"({"issues":[]})"), 200, kSse);
+  server.enqueue(sse_text("Exported."), 200, kSse);
+
+  const auto r = et::run({EDITING_AGENT_BIN, "--provider", "openai", "--model", "m", "--base-url", server.base_url(),
+                          "--workspace", dir.path.string(), "--self-review", "--json", "export the clip"});
+  CHECK(r.exit_code == 0);
+  REQUIRE(fs::exists(output));
+  REQUIRE(server.request_count() == 5);
+  CHECK_THAT(server.request(3).body, ContainsSubstring("contact sheet"));
 }
 

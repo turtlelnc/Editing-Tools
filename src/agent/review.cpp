@@ -84,8 +84,12 @@ std::vector<ReviewIssue> review_edit(Provider& provider, const json& project, co
   if (times.empty()) throw std::invalid_argument("the timeline has nothing to look at");
 
   std::string labels;
-  Message user;
-  user.role = Message::Role::User;
+  for (size_t i = 0; i < times.size(); ++i) labels += "  frame " + std::to_string(i + 1) + ": " + std::to_string(times[i]) + "s\n";
+
+  // One contact sheet is cheaper than several images and lets the reviewer see the sequence at once.
+  const std::string sheet = render::contact_sheet(p, times, 640, 3);
+  if (sheet.empty()) throw std::runtime_error("could not extract frames for review");
+
   std::vector<Message> ask;
   Message sys;
   sys.role = Message::Role::System;
@@ -94,16 +98,13 @@ std::vector<ReviewIssue> review_edit(Provider& provider, const json& project, co
 
   std::string intro = "The user's task was: " + task + "\n";
   if (!focus.empty()) intro += "Focus this review on: " + focus + "\n";
-  intro += "\nTimeline (compact):\n" + util::dump_json(compact_project(project)) + "\n\nFrames follow in this order:\n";
-  size_t index = 0;
-  for (double t : times) {
-    const std::string jpeg = render::frame(p, t, 640);
-    if (jpeg.empty()) continue;
-    user.images.push_back({"image/jpeg", util::base64(jpeg)});
-    labels += "  frame " + std::to_string(++index) + ": " + std::to_string(t) + "s\n";
-  }
-  if (user.images.empty()) throw std::runtime_error("could not extract any frames for review");
-  user.text = intro + labels;
+  intro += "\nTimeline (compact):\n" + util::dump_json(compact_project(project)) +
+           "\n\nOne contact sheet follows; its cells read left to right, top to bottom in this order:\n" + labels;
+
+  Message user;
+  user.role = Message::Role::User;
+  user.text = intro;
+  user.images.push_back({"image/jpeg", util::base64(sheet)});
   ask.push_back(std::move(user));
 
   CompleteOptions opt;

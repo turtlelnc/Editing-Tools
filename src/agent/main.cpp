@@ -55,6 +55,8 @@ Options:
   --overwrite                         allow replacing an existing output file
   --no-export                         dry run: no render_export (previews are fine)
   --max-steps N                       model calls per turn before a wrap-up (default 40)
+  --max-tokens N                      soft token budget per turn (input+output); 0 = unlimited
+  --self-review                       run the independent reviewer before an export and refuse if it finds problems
   --resume ID|last                    continue a saved session (the workspace/project are restored)
   --notes FILE                        project memory appended to the system prompt
   --json                              machine-readable JSONL events on stdout
@@ -77,6 +79,8 @@ struct Options {
   bool provider_given = false;
   std::vector<std::string> allow, task;
   int max_steps = 40;
+  long max_tokens = 0;
+  bool self_review = false;
   bool overwrite = false, no_export = false, json = false, quiet = false, yes = false, help = false, version = false;
 };
 
@@ -137,6 +141,8 @@ Options parse(int argc, char** argv) {
       else if (name == "workspace") o.workspace = val();
       else if (name == "allow") o.allow.push_back(val());
       else if (name == "max-steps") o.max_steps = std::max(1, std::atoi(val().c_str()));
+      else if (name == "max-tokens") o.max_tokens = std::max(0L, std::atol(val().c_str()));
+      else if (name == "self-review") o.self_review = true;
       else if (name == "resume") o.resume = val();
       else if (name == "notes") o.notes = val();
       else if (name == "overwrite") o.overwrite = true;
@@ -232,6 +238,8 @@ class Sink {
             {"input_tokens", r.input_tokens},
             {"output_tokens", r.output_tokens},
             {"hit_max_steps", r.hit_max_steps},
+            {"hit_budget", r.hit_budget},
+            {"hit_error_limit", r.hit_error_limit},
             {"cancelled", r.cancelled},
             {"session", session_id}});
       return;
@@ -240,6 +248,8 @@ class Sink {
       std::cerr << "[" << r.steps << " step" << (r.steps == 1 ? "" : "s") << ", " << r.input_tokens << " in / "
                 << r.output_tokens << " out tokens";
       if (r.hit_max_steps) std::cerr << ", stopped at the step limit";
+      if (r.hit_budget) std::cerr << ", stopped at the token budget";
+      if (r.hit_error_limit) std::cerr << ", stopped after repeated tool failures";
       std::cerr << "]\n";
     }
   }
@@ -525,11 +535,34 @@ int run_mode(const Options& o) {
        }});
 
   // Ask before replacing a finished file. Chat mode can prompt; a one-shot run was explicit about wanting output.
-  app.toolbox->set_approver([&o](const std::string& tool, const json& args, std::string& reason) {
+  app.toolbox->set_approver([&o, provider_ptr, toolbox_ptr, reviews, current_task,
+                             sink_ptr](const std::string& tool, const json& args, std::string& reason) {
     if (tool != "render_export") return true;
     if (o.no_export) {
       reason = "this run is a --no-export dry run; do not write files. Describe the edit instead.";
       return false;
+    }
+    if (o.self_review && *reviews < 2) {
+      // A second opinion before the expensive step. If it finds something, the model gets a chance to fix it.
+      ++*reviews;
+      sink_ptr->note("self-review before export (" + std::to_string(*reviews) + "/2)…");
+      try {
+        auto& project = toolbox_ptr->session().get();
+        const auto issues = et::agent::review_edit(
+            *provider_ptr, project.to_json(), *current_task,
+            "Look for problems that would be visible in the exported file: grade consistency, subtitles, cut points.", 6);
+        if (!issues.empty()) {
+          json list = json::array();
+          for (const auto& issue : issues)
+            list.push_back({{"severity", issue.severity}, {"at", issue.at}, {"message", issue.message}});
+          reason = "self-review found issues to fix before exporting: " + list.dump() +
+                   ". Fix them (or explain why they are not real) and render again.";
+          return false;
+        }
+        sink_ptr->note("self-review found no blocking issues");
+      } catch (const std::exception& e) {
+        sink_ptr->note(std::string("self-review could not run (exporting anyway): ") + e.what());
+      }
     }
     if (o.yes || o.mode != "chat") return true;
     if (!isatty(STDIN_FILENO)) return true;  // piped chat cannot answer
@@ -559,6 +592,7 @@ int run_mode(const Options& o) {
 
   et::agent::LoopConfig loop_cfg;
   loop_cfg.max_steps = o.max_steps;
+  loop_cfg.max_tokens = o.max_tokens;
   app.loop = std::make_unique<et::agent::AgentLoop>(*app.provider, *app.toolbox, loop_cfg);
 
   app.sink.start(app.store->id(), *app.provider, o.model.empty() ? "(default)" : o.model, app.workspace);
@@ -660,6 +694,9 @@ int main(int argc, char** argv) {
   } catch (const et::agent::ProviderError& e) {
     std::cerr << "error: " << e.what() << "\n";
     if (e.status == 401) std::cerr << "(check the API key; for --provider codex run: editing-agent login)\n";
+    if (e.status == 403)
+      std::cerr << "(access denied — for the ChatGPT/Codex backend this usually means the network region is blocked; "
+                   "try --proxy or HTTPS_PROXY)\n";
     if (e.status == 429) std::cerr << "(rate limited; wait a moment and try again)\n";
     return 1;
   } catch (const std::exception& e) {
