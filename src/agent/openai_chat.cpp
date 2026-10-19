@@ -7,6 +7,16 @@ namespace et::agent {
 
 namespace {
 
+// Usage and tool-call fields come from the network: a malformed value must not throw out of the parser.
+long long number_field(const json& j, const char* key, long long fallback) {
+  auto it = j.find(key);
+  if (it == j.end()) return fallback;
+  if (it->is_number_integer()) return it->get<long long>();
+  if (it->is_number_unsigned()) return static_cast<long long>(it->get<unsigned long long>());
+  if (it->is_number_float()) return static_cast<long long>(it->get<double>());
+  return fallback;
+}
+
 json image_part(const Image& im) {
   return {{"type", "image_url"}, {"image_url", {{"url", "data:" + im.mime + ";base64," + im.data}}}};
 }
@@ -109,8 +119,8 @@ void ChatStreamParser::feed_line(const std::string& line) {
   if (!j.is_object()) return;
 
   if (j.contains("usage") && j["usage"].is_object()) {
-    c_.input_tokens = j["usage"].value("prompt_tokens", 0L);
-    c_.output_tokens = j["usage"].value("completion_tokens", 0L);
+    c_.input_tokens = static_cast<long>(number_field(j["usage"], "prompt_tokens", 0));
+    c_.output_tokens = static_cast<long>(number_field(j["usage"], "completion_tokens", 0));
   }
   if (!j.contains("choices") || !j["choices"].is_array() || j["choices"].empty()) return;
   const json& choice = j["choices"][0];
@@ -124,7 +134,10 @@ void ChatStreamParser::feed_line(const std::string& line) {
   }
   if (d.contains("tool_calls") && d["tool_calls"].is_array()) {
     for (const json& tc : d["tool_calls"]) {
-      size_t idx = tc.value("index", 0);
+      if (!tc.is_object()) continue;  // a malformed entry is ignored, not fatal
+      const long long raw_index = number_field(tc, "index", 0);
+      if (raw_index < 0) continue;
+      size_t idx = static_cast<size_t>(raw_index);
       if (idx >= 64) continue;
       if (calls_.size() <= idx) { calls_.resize(idx + 1); args_.resize(idx + 1); }
       if (tc.contains("id") && tc["id"].is_string()) calls_[idx].id = tc["id"];
@@ -171,16 +184,25 @@ Completion OpenAiChat::complete(const std::vector<Message>& messages, const std:
     // A server that ignored stream:true answers with one plain JSON document; salvage it.
     json j = json::parse(r.body, nullptr, false);
     if (j.is_object() && j.contains("choices") && !j["choices"].empty()) {
-      const json& msg = j["choices"][0].value("message", json::object());
+      const json& choice = j["choices"][0];
+      const json msg = (choice.is_object() && choice.contains("message") && choice["message"].is_object())
+                           ? choice["message"]
+                           : json::object();
       if (msg.contains("content") && msg["content"].is_string()) c.text = msg["content"];
       if (msg.contains("tool_calls") && msg["tool_calls"].is_array()) {
         for (const json& tc : msg["tool_calls"]) {
+          if (!tc.is_object() || !tc.contains("function") || !tc["function"].is_object()) continue;
           ToolCall call;
-          call.id = tc.value("id", "call_" + std::to_string(c.calls.size()));
-          call.name = tc["function"].value("name", "");
-          json a = json::parse(tc["function"].value("arguments", "{}"), nullptr, false);
+          call.id = (tc.contains("id") && tc["id"].is_string()) ? tc["id"].get<std::string>()
+                                                                : "call_" + std::to_string(c.calls.size());
+          const json& fn = tc["function"];
+          if (fn.contains("name") && fn["name"].is_string()) call.name = fn["name"].get<std::string>();
+          const std::string raw = (fn.contains("arguments") && fn["arguments"].is_string())
+                                      ? fn["arguments"].get<std::string>()
+                                      : std::string("{}");
+          json a = json::parse(raw, nullptr, false);
           call.arguments = a.is_object() ? a : json::object();
-          c.calls.push_back(call);
+          c.calls.push_back(std::move(call));
         }
       }
     }

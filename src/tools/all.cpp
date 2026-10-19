@@ -1,5 +1,6 @@
 #include "tools/all.h"
 
+#include "tools/analysis.h"
 #include "tools/color.h"
 #include "tools/media.h"
 #include "tools/subtitles.h"
@@ -9,6 +10,7 @@ namespace et::tools {
 
 void register_all_tools(mcp::Server& server, std::shared_ptr<Session> session) {
   register_media_tools(server);
+  register_analysis_tools(server);
   register_timeline_tools(server, session);
   register_subtitle_tools(server, session);
   register_color_tools(server, session);

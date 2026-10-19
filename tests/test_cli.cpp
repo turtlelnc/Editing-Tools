@@ -1,3 +1,5 @@
+#include <unistd.h>
+
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <cstdlib>
@@ -35,7 +37,7 @@ Result cli_run(const std::vector<std::string>& args, const std::string& stdin_te
 }
 
 struct Dir {
-  fs::path path = fs::temp_directory_path() / "et_cli";
+  fs::path path = fs::temp_directory_path() / ("et_cli_" + std::to_string(::getpid()));
   std::string project = (path / "p.json").string(), video = (path / "v.mp4").string();
   Dir() {
     fs::remove_all(path);

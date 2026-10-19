@@ -348,3 +348,17 @@ TEST_CASE("agent: anthropic applies its defaults and rejects a missing key") {
   keyless.model = "claude-test";
   CHECK_THROWS_AS(agent::Anthropic(keyless), std::invalid_argument);
 }
+
+TEST_CASE("agent: anthropic ignores malformed event fields instead of throwing") {
+  agent::AnthropicStreamParser parser(nullptr);
+  // Wrong types in the event envelope and in content blocks must not escape as nlohmann exceptions.
+  parser.feed_line(R"(data: {"type":42})");
+  parser.feed_line(R"(data: {"type":"content_block_start","index":0,"content_block":{"type":7}})");
+  parser.feed_line(R"(data: {"type":"content_block_delta","index":0,"delta":{"type":[],"text":9}})");
+  parser.feed_line(R"(data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","name":9,"id":7}})");
+  parser.feed_line(R"(data: {"type":"message_stop"})");
+  const agent::Completion c = parser.finish();
+  CHECK(parser.done());
+  CHECK(c.text.empty());
+  CHECK(c.calls.empty());
+}

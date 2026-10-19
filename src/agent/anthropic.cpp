@@ -13,6 +13,12 @@ constexpr const char* kDefaultBaseUrl = "https://api.anthropic.com";
 constexpr const char* kDefaultModel = "claude-sonnet-5-5";
 constexpr const char* kApiVersion = "2023-06-01";
 
+// Stream fields come from the network; a wrong type is ignored instead of throwing out of the parser.
+std::string string_field(const json& j, const char* key) {
+  auto it = j.find(key);
+  return (it != j.end() && it->is_string()) ? it->get<std::string>() : std::string();
+}
+
 json image_block(const Image& im) {
   return {{"type", "image"}, {"source", {{"type", "base64"}, {"media_type", im.mime}, {"data", im.data}}}};
 }
@@ -130,7 +136,7 @@ void AnthropicStreamParser::feed_line(const std::string& line) {
   json j = json::parse(payload, nullptr, false);
   if (!j.is_object()) return;
 
-  std::string type = j.value("type", std::string());
+  std::string type = string_field(j, "type");
   if (type.empty()) type = event_;
 
   if (type == "message_start") {
@@ -150,7 +156,7 @@ void AnthropicStreamParser::feed_line(const std::string& line) {
     current_tool_.clear();
     if (!j.contains("content_block") || !j["content_block"].is_object()) return;
     const json& block = j["content_block"];
-    const std::string kind = block.value("type", std::string());
+    const std::string kind = string_field(block, "type");
     if (kind == "tool_use") {
       if (calls_.size() <= static_cast<size_t>(index)) {
         calls_.resize(static_cast<size_t>(index) + 1);
@@ -180,7 +186,7 @@ void AnthropicStreamParser::feed_line(const std::string& line) {
     }
     if (!j.contains("delta") || !j["delta"].is_object()) return;
     const json& delta = j["delta"];
-    const std::string kind = delta.value("type", std::string());
+    const std::string kind = string_field(delta, "type");
     if (kind == "text_delta") {
       if (delta.contains("text") && delta["text"].is_string()) append_text(delta["text"].get<std::string>());
     } else if (kind == "input_json_delta") {
@@ -258,14 +264,14 @@ Completion Anthropic::complete(const std::vector<Message>& messages, const std::
     if (j.is_object() && j.contains("content") && j["content"].is_array()) {
       for (const json& block : j["content"]) {
         if (!block.is_object()) continue;
-        const std::string kind = block.value("type", std::string());
+        const std::string kind = string_field(block, "type");
         if (kind == "text") {
           if (block.contains("text") && block["text"].is_string()) c.text += block["text"].get<std::string>();
           continue;
         }
         if (kind != "tool_use") continue;
         ToolCall call;
-        call.name = block.value("name", std::string());
+        call.name = string_field(block, "name");
         if (call.name.empty()) continue;
         call.id = block.contains("id") && block["id"].is_string() ? block["id"].get<std::string>()
                                                                  : "call_" + std::to_string(c.calls.size());

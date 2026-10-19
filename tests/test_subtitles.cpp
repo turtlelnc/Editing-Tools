@@ -1,3 +1,5 @@
+#include <unistd.h>
+
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <filesystem>
@@ -152,7 +154,7 @@ int changed(const Frame& a, const Frame& b, int y0, int y1) {
 TEST_CASE("end to end: subtitles are burned in at the requested position") {
   if (!ffmpeg_has_filter("ass")) SKIP("ffmpeg lacks libass; set EDITING_TOOLS_FFMPEG to one that has it");
 
-  auto dir = fs::temp_directory_path() / "et_subs";
+  auto dir = fs::temp_directory_path() / ("et_subs_" + std::to_string(::getpid()));
   fs::create_directories(dir);
   auto src = (dir / "src.mp4").string();
   REQUIRE(run({"ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "color=c=0x303030:s=320x240:r=10:d=3", "-f", "lavfi", "-i",

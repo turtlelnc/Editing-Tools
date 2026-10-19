@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [cpp-rewrite, main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    name: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-14]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ffmpeg and ninja
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            sudo apt-get update
+            sudo apt-get install -y ffmpeg ninja-build
+          else
+            brew install ffmpeg ninja
+          fi
+
+      - name: Cache CMake dependencies
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: deps-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  sanitizers:
+    name: asan+ubsan
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ffmpeg and ninja
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg ninja-build
+
+      - name: Cache CMake dependencies
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: deps-sanitizers-${{ hashFiles('CMakeLists.txt') }}
+
+      - name: Configure with sanitizers
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DET_SANITIZERS=ON
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test under sanitizers
+        env:
+          ASAN_OPTIONS: detect_leaks=0:abort_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: ctest --test-dir build --output-on-failure
