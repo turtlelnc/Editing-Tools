@@ -26,6 +26,7 @@
 #include "model/timeline.h"
 #include "tools/all.h"
 #include "tools/session.h"
+#include "util/utf8.h"
 
 namespace fs = std::filesystem;
 using nlohmann::json;
@@ -47,6 +48,7 @@ Options:
   --model NAME                        model id; required for openai, has a default for the others
   --base-url URL                      override the API endpoint (e.g. a local OpenAI-compatible server)
   --api-key KEY                       API key (also read from OPENAI_API_KEY / ANTHROPIC_API_KEY)
+  --proxy URL                         send model requests through this HTTP proxy (also applies to login)
   --project FILE                      project JSON to open, or to create if it does not exist yet
   --workspace DIR                     folder the agent may read and write (default: current directory)
   --allow DIR                         extra folder the agent may use (repeatable: footage, LUTs, output)
@@ -71,7 +73,7 @@ struct UsageError : std::runtime_error {
 
 struct Options {
   std::string mode = "run";  // run | chat | login | sessions
-  std::string provider = "openai", model, base_url, api_key, project, workspace, resume, notes;
+  std::string provider = "openai", model, base_url, api_key, proxy, project, workspace, resume, notes;
   bool provider_given = false;
   std::vector<std::string> allow, task;
   int max_steps = 40;
@@ -130,6 +132,7 @@ Options parse(int argc, char** argv) {
       else if (name == "model") o.model = val();
       else if (name == "base-url") o.base_url = val();
       else if (name == "api-key") o.api_key = val();
+      else if (name == "proxy") o.proxy = val();
       else if (name == "project") o.project = val();
       else if (name == "workspace") o.workspace = val();
       else if (name == "allow") o.allow.push_back(val());
@@ -166,23 +169,35 @@ class Sink {
   Sink(bool json_mode, bool quiet) : json_(json_mode), quiet_(quiet) {}
 
   void delta(const std::string& s) {
-    if (json_) return emit({{"event", "text"}, {"delta", s}});
+    if (json_) {
+      // A delta may end in the middle of a multi-byte character; hold those bytes until the rest arrives.
+      pending_text_ += s;
+      const size_t complete = et::util::utf8_complete_prefix(pending_text_);
+      if (complete == 0) return;
+      emit({{"event", "text"}, {"delta", pending_text_.substr(0, complete)}});
+      pending_text_.erase(0, complete);
+      return;
+    }
     std::cout << s << std::flush;
     mid_text_ = true;
   }
   void note(const std::string& line) {
-    if (json_) return emit({{"event", "notice"}, {"text", line}});
+    if (json_) {
+      flush_text();
+      return emit({{"event", "notice"}, {"text", line}});
+    }
     if (quiet_) return;
     end_text();
     std::cerr << line << '\n';
   }
   void tool_start(const et::agent::ToolCall& call) {
-    std::string args = call.arguments.dump();
+    std::string args = et::util::dump_json(call.arguments);
     if (args.size() > 240) args = args.substr(0, 240) + "…";
     if (json_) return emit({{"event", "tool"}, {"name", call.name}, {"arguments", call.arguments}});
     note("  -> " + call.name + " " + args);
   }
   void tool_done(const et::agent::ToolCall& call, const et::agent::ToolResult& r) {
+    if (json_) flush_text();
     if (json_)
       return emit({{"event", "tool_result"},
                    {"name", call.name},
@@ -199,6 +214,10 @@ class Sink {
     }
   }
   void end_text() {
+    if (json_) {
+      flush_text();
+      return;
+    }
     if (!json_ && mid_text_) {
       std::cout << "\n" << std::flush;
       mid_text_ = false;
@@ -206,6 +225,7 @@ class Sink {
   }
   void final(const et::agent::LoopResult& r, const std::string& session_id) {
     if (json_) {
+      flush_text();
       emit({{"event", "final"},
             {"text", r.final_text},
             {"steps", r.steps},
@@ -224,7 +244,10 @@ class Sink {
     }
   }
   void error(const std::string& message) {
-    if (json_) return emit({{"event", "error"}, {"message", message}});
+    if (json_) {
+      flush_text();
+      return emit({{"event", "error"}, {"message", et::util::sanitize_utf8(message)}});
+    }
     std::cerr << "error: " << message << "\n";
   }
   void start(const std::string& session_id, const et::agent::Provider& provider, const std::string& model,
@@ -239,9 +262,16 @@ class Sink {
   bool json_mode() const { return json_; }
 
  private:
-  void emit(const json& j) { std::cout << j.dump() << '\n' << std::flush; }
+  // In JSON mode, emit whatever complete text is buffered first (keeps events in order).
+  void flush_text() {
+    if (pending_text_.empty()) return;
+    emit({{"event", "text"}, {"delta", et::util::sanitize_utf8(pending_text_)}});
+    pending_text_.clear();
+  }
+  void emit(const json& j) { std::cout << et::util::dump_json(j) << '\n' << std::flush; }
 
   bool json_ = false, quiet_ = false, mid_text_ = false;
+  std::string pending_text_;
 };
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -545,7 +575,7 @@ int run_mode(const Options& o) {
       task = trim(s.str());
     }
     if (task.empty()) throw UsageError("no task given (pass one as an argument, or pipe it on stdin)");
-    if (app.store->title().empty()) app.store->set_title(task.size() > 100 ? task.substr(0, 100) : task);
+    if (app.store->title().empty()) app.store->set_title(et::util::truncate_utf8(task, 100));
     try {
       auto result = run_turn(app, task);
       if (result.cancelled) return finish(130);
@@ -576,10 +606,10 @@ int run_mode(const Options& o) {
         app.sink.note("no project is open yet");
         continue;
       }
-      std::cout << app.session->get().to_json().dump(2) << "\n";
+      std::cout << et::util::dump_json(app.session->get().to_json(), 2) << "\n";
       continue;
     }
-    if (app.store->title().empty()) app.store->set_title(line.size() > 100 ? line.substr(0, 100) : line);
+    if (app.store->title().empty()) app.store->set_title(et::util::truncate_utf8(line, 100));
     g_interrupts.store(0);
     try {
       run_turn(app, line);
@@ -601,6 +631,12 @@ int main(int argc, char** argv) {
   std::ios::sync_with_stdio(false);
   try {
     Options o = parse(argc, argv);
+    if (!o.proxy.empty()) {
+      // curl (used for every model request) reads these; loopback URLs are explicitly excluded by the client,
+      // so local mock servers and local model servers are never sent through the proxy.
+      for (const char* name : {"HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"})
+        setenv(name, o.proxy.c_str(), 1);
+    }
     if (o.help) {
       std::cout << kUsage;
       return 0;

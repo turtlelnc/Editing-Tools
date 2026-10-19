@@ -1,6 +1,7 @@
 #include "agent/openai_chat.h"
 
 #include "agent/http.h"
+#include "util/utf8.h"
 
 namespace et::agent {
 
@@ -75,7 +76,7 @@ json OpenAiChat::build_request(const std::vector<Message>& messages, const std::
         if (!m.calls.empty()) {
           json calls = json::array();
           for (auto& c : m.calls)
-            calls.push_back({{"id", c.id}, {"type", "function"}, {"function", {{"name", c.name}, {"arguments", c.arguments.dump()}}}});
+            calls.push_back({{"id", c.id}, {"type", "function"}, {"function", {{"name", c.name}, {"arguments", util::dump_json(c.arguments)}}}});
           a["tool_calls"] = calls;
         }
         msgs.push_back(a);
@@ -158,7 +159,7 @@ Completion OpenAiChat::complete(const std::vector<Message>& messages, const std:
   req.url = cfg_.base_url + "/chat/completions";
   req.headers = {"Content-Type: application/json", "Accept: text/event-stream"};
   if (!cfg_.api_key.empty()) req.headers.push_back("Authorization: Bearer " + cfg_.api_key);
-  req.body = build_request(messages, tools).dump();
+  req.body = util::dump_json(build_request(messages, tools));
 
   ChatStreamParser parser(opt.on_text_delta);
   HttpResult r = http_post_retry(req, [&](const std::string& line) { parser.feed_line(line); }, opt.cancelled, 2, 2.0, opt.on_retry);

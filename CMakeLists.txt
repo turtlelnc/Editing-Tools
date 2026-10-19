@@ -46,7 +46,8 @@ add_library(et_agent
   src/agent/prompt.cpp
   src/agent/loop.cpp
   src/agent/session.cpp
-  src/agent/review.cpp)
+  src/agent/review.cpp
+  src/util/utf8.cpp)
 target_include_directories(et_agent PUBLIC src)
 target_link_libraries(et_agent PUBLIC et_core nlohmann_json::nlohmann_json)
 target_compile_options(et_agent PRIVATE -Wall -Wextra)

@@ -8,6 +8,7 @@
 #include "model/timeline.h"
 #include "render/render.h"
 #include "util/base64.h"
+#include "util/utf8.h"
 
 namespace et::agent {
 
@@ -93,7 +94,7 @@ std::vector<ReviewIssue> review_edit(Provider& provider, const json& project, co
 
   std::string intro = "The user's task was: " + task + "\n";
   if (!focus.empty()) intro += "Focus this review on: " + focus + "\n";
-  intro += "\nTimeline (compact):\n" + compact_project(project).dump() + "\n\nFrames follow in this order:\n";
+  intro += "\nTimeline (compact):\n" + util::dump_json(compact_project(project)) + "\n\nFrames follow in this order:\n";
   size_t index = 0;
   for (double t : times) {
     const std::string jpeg = render::frame(p, t, 640);

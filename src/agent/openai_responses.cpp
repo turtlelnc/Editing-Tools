@@ -5,6 +5,7 @@
 #include <utility>
 
 #include "agent/http.h"
+#include "util/utf8.h"
 
 namespace et::agent {
 
@@ -122,7 +123,7 @@ json OpenAiResponses::build_request(const std::vector<Message>& messages, const 
           input.push_back({{"type", "function_call"},
                            {"call_id", call.id},
                            {"name", call.name},
-                           {"arguments", call.arguments.dump()}});
+                           {"arguments", util::dump_json(call.arguments)}});
         }
         break;
       }
@@ -210,7 +211,7 @@ void ResponsesStreamParser::feed_line(const std::string& line) {
 
     auto args_it = item.find("arguments");
     if (args_it != item.end()) {
-      const std::string arguments = args_it->is_string() ? args_it->get<std::string>() : args_it->dump();
+      const std::string arguments = args_it->is_string() ? args_it->get<std::string>() : util::dump_json(*args_it);
       // A done event carries the final arguments: prefer them over the accumulated deltas.
       if (type == "response.output_item.done" || args_[idx].empty()) args_[idx] = arguments;
     }
@@ -267,7 +268,7 @@ Completion OpenAiResponses::complete(const std::vector<Message>& messages, const
   if (!cfg_.account.empty()) req.headers.push_back("chatgpt-account-id: " + cfg_.account);
   req.headers.push_back("OpenAI-Beta: responses=experimental");
   req.headers.push_back("originator: " + (cfg_.instructions.empty() ? std::string("editing-agent") : cfg_.instructions));
-  req.body = build_request(messages, tools).dump();
+  req.body = util::dump_json(build_request(messages, tools));
 
   ResponsesStreamParser parser(opt.on_text_delta);
   HttpResult r = http_post_retry(req, [&](const std::string& line) { parser.feed_line(line); }, opt.cancelled, 2, 2.0,

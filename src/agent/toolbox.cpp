@@ -5,6 +5,7 @@
 
 #include "tools/all.h"
 #include "util/base64.h"
+#include "util/utf8.h"
 
 namespace et::agent {
 
@@ -203,9 +204,10 @@ ToolResult ToolBox::run(const ToolCall& call) {
   }
   if (payload.is_object() && payload.contains("clips") && payload.contains("assets") && payload.contains("duration"))
     payload = compact_project(payload);
-  result.text = payload.dump();
+  result.text = util::dump_json(payload);
   if (result.text.size() > kMaxResultChars)
-    result.text = result.text.substr(0, kMaxResultChars) + "…[truncated " + std::to_string(result.text.size() - kMaxResultChars) + " chars]";
+    result.text = util::truncate_utf8(result.text, kMaxResultChars) + "…[truncated " +
+                  std::to_string(result.text.size() - kMaxResultChars) + " chars]";
   return result;
 }
 

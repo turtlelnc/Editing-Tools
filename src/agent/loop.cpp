@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <stdexcept>
 
+#include "util/utf8.h"
+
 namespace et::agent {
 
 namespace {
@@ -12,7 +14,7 @@ constexpr size_t kToolTextLimit = 3000;  // per tool result, when building the s
 
 std::string truncate(const std::string& s, size_t n) {
   if (s.size() <= n) return s;
-  return s.substr(0, n) + "…[+" + std::to_string(s.size() - n) + " chars]";
+  return util::truncate_utf8(s, n) + "…[+" + std::to_string(s.size() - n) + " chars]";
 }
 
 const char* role_name(Message::Role r) {
@@ -34,7 +36,7 @@ std::string transcript(const std::vector<Message>& messages, size_t begin, size_
     if (m.role == Message::Role::Tool && !m.tool_name.empty()) out += " " + m.tool_name;
     out += "] ";
     if (!m.text.empty()) out += truncate(m.text, kToolTextLimit);
-    for (const auto& c : m.calls) out += "\n  (asked for " + c.name + " " + truncate(c.arguments.dump(), 800) + ")";
+    for (const auto& c : m.calls) out += "\n  (asked for " + c.name + " " + truncate(util::dump_json(c.arguments), 800) + ")";
     if (!m.images.empty()) out += " [" + std::to_string(m.images.size()) + " image(s)]";
     out += "\n";
   }
@@ -50,7 +52,7 @@ size_t AgentLoop::usage_chars(const std::vector<Message>& messages) const {
   size_t total = 0;
   for (const auto& m : messages) {
     total += m.text.size() + m.tool_name.size() + m.call_id.size() + m.images.size() * kImageChars;
-    for (const auto& c : m.calls) total += c.name.size() + c.arguments.dump().size() + 32;
+    for (const auto& c : m.calls) total += c.name.size() + util::dump_json(c.arguments).size() + 32;
     total += 16;
   }
   return total;

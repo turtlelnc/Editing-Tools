@@ -9,6 +9,7 @@
 #include <sstream>
 
 #include "util/base64.h"
+#include "util/utf8.h"
 
 namespace et::agent {
 
@@ -227,17 +228,17 @@ std::vector<SessionInfo> SessionStore::list(const fs::path& root) {
 
 void SessionStore::write_metadata() {
   json meta = {{"type", "meta"}, {"id", id_}, {"title", title_}, {"created", created_}};
-  log_ << meta.dump() << '\n' << std::flush;
+  log_ << util::dump_json(meta) << '\n' << std::flush;
 }
 
 void SessionStore::set_title(const std::string& title) {
   title_ = title;
-  log_ << json{{"type", "title"}, {"title", title}}.dump() << '\n' << std::flush;
+  log_ << util::dump_json(json{{"type", "title"}, {"title", util::sanitize_utf8(title)}}) << '\n' << std::flush;
 }
 
 void SessionStore::set_config(const std::string& key, const std::string& value) {
   config_[key] = value;
-  log_ << json{{"type", "config"}, {"key", key}, {"value", value}}.dump() << '\n' << std::flush;
+  log_ << util::dump_json(json{{"type", "config"}, {"key", key}, {"value", value}}) << '\n' << std::flush;
 }
 
 const std::string& SessionStore::config(const std::string& key) const {
@@ -247,18 +248,23 @@ const std::string& SessionStore::config(const std::string& key) const {
 }
 
 void SessionStore::append(const Message& message) {
-  json j = {{"type", "message"}, {"role", role_wire(message.role)}, {"text", message.text}};
-  if (!message.call_id.empty()) j["call_id"] = message.call_id;
-  if (!message.tool_name.empty()) j["tool_name"] = message.tool_name;
-  if (message.is_error) j["is_error"] = true;
-  if (!message.calls.empty()) {
+  // Model output and tool stderr are arbitrary bytes; keep the log (and the resumed conversation) valid UTF-8.
+  Message clean = message;
+  clean.text = util::sanitize_utf8(clean.text);
+  clean.call_id = util::sanitize_utf8(clean.call_id);
+  clean.tool_name = util::sanitize_utf8(clean.tool_name);
+  json j = {{"type", "message"}, {"role", role_wire(clean.role)}, {"text", clean.text}};
+  if (!clean.call_id.empty()) j["call_id"] = clean.call_id;
+  if (!clean.tool_name.empty()) j["tool_name"] = clean.tool_name;
+  if (clean.is_error) j["is_error"] = true;
+  if (!clean.calls.empty()) {
     json calls = json::array();
-    for (const auto& c : message.calls) calls.push_back({{"id", c.id}, {"name", c.name}, {"arguments", c.arguments}});
+    for (const auto& c : clean.calls) calls.push_back({{"id", c.id}, {"name", c.name}, {"arguments", c.arguments}});
     j["calls"] = std::move(calls);
   }
-  if (!message.images.empty()) {
+  if (!clean.images.empty()) {
     json rels = json::array();
-    for (const auto& img : message.images) {
+    for (const auto& img : clean.images) {
       const size_t seq = image_seq_++;
       char name[32];
       std::snprintf(name, sizeof name, "%05zu%s", seq, image_extension(img.mime).c_str());
@@ -271,8 +277,8 @@ void SessionStore::append(const Message& message) {
     }
     j["images"] = std::move(rels);
   }
-  log_ << j.dump() << '\n' << std::flush;
-  messages_.push_back(message);
+  log_ << util::dump_json(j) << '\n' << std::flush;
+  messages_.push_back(std::move(clean));
 }
 
 }  // namespace et::agent

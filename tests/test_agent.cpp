@@ -24,6 +24,7 @@
 #include "tools/all.h"
 #include "tools/media.h"
 #include "util/base64.h"
+#include "util/utf8.h"
 
 using namespace et;
 using Catch::Matchers::ContainsSubstring;
@@ -578,5 +579,51 @@ TEST_CASE("agent cli: --no-export refuses render_export even when the model asks
     if (m.value("role", "") == "tool" && m["content"].get<std::string>().find("--no-export") != std::string::npos)
       saw_refusal = true;
   CHECK(saw_refusal);
+}
+
+TEST_CASE("agent: text helpers never split UTF-8") {
+  using et::util::valid_utf8;
+  const std::string chinese = "把 clip.mp4 做成项目，整段调成偏冷，预览第 1 秒确认。";
+  CHECK(valid_utf8(chinese));
+  const std::string cut = et::util::truncate_utf8(chinese, 100);
+  CHECK(cut.size() <= 100);
+  CHECK(valid_utf8(cut));
+
+  // A byte cut that would land inside a code point is pulled back to the boundary.
+  CHECK(et::util::truncate_utf8("你好", 4) == "你");  // 你 = 3 bytes, 好 starts at byte 3
+  CHECK(et::util::truncate_utf8("你好", 3) == "你");
+  CHECK(et::util::truncate_utf8("abc", 100) == "abc");
+  CHECK(et::util::utf8_complete_prefix("你好") == 6);
+  CHECK(et::util::utf8_complete_prefix(std::string("你").substr(0, 2)) == 0);  // truncated sequence
+  CHECK(valid_utf8(et::util::sanitize_utf8(std::string("\xE4\xBD"))));
+
+  // JSON holding a malformed byte is repaired instead of throwing.
+  const json bad = {{"text", std::string(1, static_cast<char>(0xAF))}};
+  const std::string dumped = et::util::dump_json(bad);
+  CHECK(valid_utf8(dumped));
+  CHECK_THAT(dumped, ContainsSubstring("\xEF\xBF\xBD"));
+}
+
+TEST_CASE("agent cli: a long non-ASCII task is stored without breaking the session log") {
+  Dir dir;
+  test::MockServer server;
+  const fs::path root = dir.path / "home";
+  EnvGuard home("EDITING_TOOLS_HOME", root.string());
+  server.enqueue(sse_text("好的，已完成。"), 200, kSse);
+
+  std::string task;
+  for (int i = 0; i < 20; ++i) task += "把这段素材调成偏冷色调，";
+
+  const auto r = et::run({EDITING_AGENT_BIN, "--provider", "openai", "--model", "m", "--base-url", server.base_url(),
+                          "--workspace", dir.path.string(), "--json", task});
+  CHECK(r.exit_code == 0);
+  CHECK(server.request_count() == 1);
+
+  // This used to throw "incomplete UTF-8 string" when the title was cut in the middle of a character.
+  const auto sessions = agent::SessionStore::list(root);
+  REQUIRE(sessions.size() == 1);
+  CHECK(et::util::valid_utf8(sessions[0].title));
+  CHECK(sessions[0].title.size() <= 100);
+  CHECK_THAT(sessions[0].title, ContainsSubstring("把这段素材"));
 }
 

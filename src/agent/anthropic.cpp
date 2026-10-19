@@ -3,6 +3,7 @@
 #include <utility>
 
 #include "agent/http.h"
+#include "util/utf8.h"
 
 namespace et::agent {
 
@@ -163,7 +164,7 @@ void AnthropicStreamParser::feed_line(const std::string& line) {
       // non-empty input here means the whole object was sent up front instead.
       if (args_[static_cast<size_t>(index)].empty() && block.contains("input") && block["input"].is_object() &&
           !block["input"].empty())
-        args_[static_cast<size_t>(index)] = block["input"].dump();
+        args_[static_cast<size_t>(index)] = util::dump_json(block["input"]);
     } else if (kind == "text" && block.contains("text") && block["text"].is_string()) {
       append_text(block["text"].get<std::string>());
     }
@@ -210,7 +211,7 @@ void AnthropicStreamParser::feed_line(const std::string& line) {
   }
 
   if (type == "error") {
-    error_ = error_message_from_body(j.dump());
+    error_ = error_message_from_body(util::dump_json(j));
     if (error_.empty()) error_ = "the model stream reported an error";
     done_ = true;
     return;
@@ -240,7 +241,7 @@ Completion Anthropic::complete(const std::vector<Message>& messages, const std::
   req.url = cfg_.base_url + "/v1/messages";
   req.headers = {"Content-Type: application/json", "Accept: text/event-stream", "x-api-key: " + cfg_.api_key,
                  "anthropic-version: " + std::string(kApiVersion)};
-  req.body = build_request(messages, tools).dump();
+  req.body = util::dump_json(build_request(messages, tools));
 
   AnthropicStreamParser parser(opt.on_text_delta);
   HttpResult r = http_post_retry(req, [&](const std::string& line) { parser.feed_line(line); }, opt.cancelled, 2, 2.0,
