@@ -1,8 +1,10 @@
 # Editing-Tools
 
+[![CI](https://github.com/turtlelnc/Editing-Tools/actions/workflows/ci.yml/badge.svg?branch=cpp-rewrite)](https://github.com/turtlelnc/Editing-Tools/actions/workflows/ci.yml)
+
 让 AI 剪视频的 MCP Server + 自带 Agent。达芬奇的 MCP 需要 Studio 版；这个工具用 C++ + FFmpeg 实现，免费、单个二进制、跨平台思路（目前在 macOS 上开发和验证）。
 
-两种用法：把 27 个剪辑工具接到 Claude Code 这类现成 Agent 上（MCP 或 CLI），或者直接用仓库里自带的 `editing-agent`——一句话任务，它自己调用工具、自己看预览图、自己改到满意。
+两种用法：把 33 个剪辑工具接到 Claude Code 这类现成 Agent 上（MCP 或 CLI），或者直接用仓库里自带的 `editing-agent`——一句话任务，它自己调用工具、自己看预览图、自己改到满意。
 
 AI 只操作一个 JSON 时间线模型，不碰 FFmpeg 命令：每次修改都会校验，错误会以可读文字返回，方便 AI 自己纠正。可以随时 `preview_frame` 把某一帧作为图片取回来"看"效果。
 
@@ -12,11 +14,12 @@ AI 只操作一个 JSON 时间线模型，不碰 FFmpeg 命令：每次修改都
 |---|---|
 | 项目 | `create_project` `open_project` `get_timeline` |
 | 素材 | `probe_media` |
-| 剪辑 | `add_clip` `trim_clip` `move_clip` `delete_clip` |
+| 剪辑 | `add_clip` `trim_clip` `move_clip` `delete_clip` `set_speed`（0.25–4 倍速） |
+| 粗剪/分析 | `detect_scenes`（镜头切换）`detect_silence`（静音区间）`auto_rough_cut`（静音/镜头直接变成片段，可顺手建项目） |
 | 配乐/音频 | `add_music` `update_music` `delete_music` `set_audio`（音量/淡入淡出/降噪）`auto_duck`（人声时自动压低配乐）`normalize_loudness`（响度标准化） |
 | 字幕 | `set_subtitles` `update_subtitle` `delete_subtitle` `style_subtitles` `import_srt` `export_srt` |
-| 调色 | `color_adjust` `color_curves` `apply_lut` `reset_color`（可作用于整个项目或单个片段） |
-| 预览/输出 | `preview_frame` `render_preview` `render_export` |
+| 调色 | `color_adjust` `color_curves` `apply_lut` `apply_style`（一键风格）`reset_color`（可作用于整个项目或单个片段） |
+| 预览/输出 | `preview_frame`（单帧）`preview_frames`（联系表）`preview_compare`（调色前后对比）`render_preview` `render_export`（带进度、可 Ctrl-C 取消） |
 
 ## 构建与安装
 
@@ -55,7 +58,7 @@ claude mcp add --scope user editing-tools \
 
 ## 命令行（给 AI 直接跑）
 
-同一个二进制也是命令行工具，27 个工具都能直接调用，不需要常驻进程，也不用把全部工具的 schema 塞进上下文。项目状态存在一个 JSON 文件里，每条命令读取并写回：
+同一个二进制也是命令行工具，33 个工具都能直接调用，不需要常驻进程，也不用把全部工具的 schema 塞进上下文。项目状态存在一个 JSON 文件里，每条命令读取并写回：
 
 ```sh
 et=~/.editing-tools/bin/editing-tools
@@ -77,7 +80,11 @@ $et --project p.json render_export --output_path out.mp4
 
 ## 自带 Agent：editing-agent
 
-同一套工具代码（进程内直接调用，不起服务、不把 27 个 schema 塞进外部模型上下文），加上一个自己的 Agent 循环：调模型 → 执行它要的工具 → 把结果（包括预览图）喂回 → 直到它给出不带工具调用的回答。
+同一套工具代码（进程内直接调用，不起服务、不把 33 个 schema 塞进外部模型上下文），加上一个自己的 Agent 循环：调模型 → 执行它要的工具 → 把结果（包括预览图）喂回 → 直到它给出不带工具调用的回答。
+
+长任务的可观测性：`render_export` 会把 ffmpeg 的进度（百分比、已渲染时间、速度）实时报到 stderr / JSON 事件里，Ctrl-C 会真的杀掉正在渲染的 ffmpeg（而不是等它跑完）。工具连续失败、或 token 超预算时，循环会停止调用工具并让模型收尾，而不是继续烧钱。
+
+看画面也更省：`preview_frames` 一次把多帧拼成一张联系表，`preview_compare` 把调色前后并排放；评审用的也是联系表，一张图代替六张。
 
 ### 三种模型接入
 
@@ -107,6 +114,8 @@ $et --resume last "继续，把配乐再压低一点"              # 恢复上�
 - `--no-export`：只看不做，禁止 `render_export`。
 - `--overwrite`：允许覆盖已存在的输出文件（默认拒绝）。
 - `--max-steps N`：一轮最多调几次模型（默认 40），到上限会再问一次模型要个收尾。
+- `--max-tokens N`：一轮的 token 软预算（输入+输出），超了会停止调工具、直接要收尾；0 表示不限制。
+- `--self-review`：导出前跑一次独立评审，发现问题就拒绝导出并把问题交回模型修。
 - `--notes FILE`：项目记忆，内容会附在系统提示里。
 - `--json`：stdout 输出 JSONL 事件（`start` / `text` / `tool` / `tool_result` / `final` / `error`），给程序调用。
 - `--quiet`：不要 stderr 上的进度行。
@@ -131,21 +140,12 @@ $et --resume last "继续，把配乐再压低一点"              # 恢复上�
 
 ### 验证状态
 
-- 一共 77 个测试，其中 agent 相关 23 个；模型请求全部打到本地模拟 HTTP 服务端（`tests/mock_http.h`），覆盖：三种 provider 的请求格式和 SSE 解析、工具循环、路径权限、覆盖保护、会话保存/恢复、上下文压缩、评审、CLI 参数和退出码。
-- 其中一条是完整端到端：脚本模型依次调用 `create_project` → `add_clip` → `color_adjust` → `render_export`，真的渲染出一个 mp4，再用 `ffprobe` 校验时长和保存下来的时间线。
-- **真实联调已经跑通**（ChatGPT/Codex 订阅 + 新加坡代理）：模型自己完成 `probe_media → create_project → add_clip → color_adjust → preview_frame（模型看图）→ render_export`，导出的 mp4 用 `ffprobe` 校验为 160×120 / 10fps / 3.0s，偏暖调色让画面 R−B 从 −5.5 变成 +7.1；另一条任务里模型调用 `review_edit` 抽帧评审后再预览确认。两条任务分别用 `--json` 和非流式文本输出各验证一次。
-- 这次联调还修掉一个真实 bug：会话标题按字节截断会把中文切成半个字符，导致 JSON 序列化抛异常；现在所有模型/工具文本在截断和序列化前都做 UTF-8 边界保护（`src/util/utf8.cpp`，带回归测试）。
-- 没有 OpenAI / Anthropic 的 API Key，所以这两家只用模拟服务端验证过请求格式；真实联调需要你跑一条冒烟：
+- **109 个测试**（2 个字幕测试需要带 libass 的 ffmpeg，本机跳过；Ubuntu CI 上会跑），覆盖：三种 provider 的请求格式/SSE 解析、工具循环、路径权限、会话保存恢复、上下文压缩、预算与失败熔断、自检闸门、联系表/对比图、静音与镜头检测、粗剪、变速、风格预设、CLI 参数与退出码。
+- 所有模型请求都打在本地模拟 HTTP 服务端上（`tests/mock_http.h`），其中一条完整端到端真的渲染出 mp4 并用 `ffprobe` 校验。
+- **GitHub Actions**：Ubuntu + macOS 构建并跑全部测试；另有一个 ASan+UBSan 任务。本机也已经用 ASan+UBSan 跑过全部 109 个测试（无报错）。
+- **真实联调**（ChatGPT/Codex 订阅 + 代理）跑过三条完整任务：暖色导出、冷色 + 评审、以及「静音粗剪 → warm_cinematic → 1.2 倍速 → 联系表检查 → 导出」；最后一条成片 3.50s，与项目时长一致，日志里能看到实时渲染进度。
+- 没有 OpenAI / Anthropic 的 API Key，这两家只用模拟服务端验证过请求格式；真实联调需要你跑一条冒烟：
   `OPENAI_API_KEY=… editing-agent --provider openai --model <看图模型> --project p.json "把 a.mp4 前 5 秒调暖并加字幕，导出 out.mp4"`
-- `login` 的设备码流程用模拟授权服务端验证过；真实 `auth.openai.com` 在本机所在地区直连返回 403（见上表），走代理已确认可用。
-
-## 演示脚本
-
-`examples/demo.py` 像 AI 客户端一样通过 MCP 协议走完整条流程（造几秒的小素材 → 剪辑 → 配乐/闪避/响度 → 字幕 → 调色+LUT → 预览 → 导出），最后用 ffprobe 校验结果：
-
-```sh
-python3 examples/demo.py --out /tmp/et_demo
-```
 
 ## 说明与限制
 
@@ -156,6 +156,8 @@ python3 examples/demo.py --out /tmp/et_demo
 - 目前只有一条主视频轨（片段首尾相接），没有转场、画中画和多视频轨。
 - 没有自动语音转写：字幕文本需要由 AI 或 SRT 文件提供。计划接入 whisper.cpp。
 - `editing-agent` 目前是一次性任务 + 逐行对话，没有 TUI；Codex（ChatGPT 订阅）后端协议来自 Codex.cpp 的移植，可能与线上服务有出入，属于已知风险。
+- `set_speed` 会改变片段在时间线上的长度，后面所有片段和字幕/预览时间都会跟着移动；变速后要重新检查时间。
+- 联系表/对比图是把多帧渲成一张 JPEG，单帧像素比单独 `preview_frame` 小，细节判断仍以单帧为准。
 
 ## 代码结构
 
@@ -165,7 +167,8 @@ src/model/      时间线数据模型 + 校验 + JSON 序列化
 src/compiler/   时间线 -> ffmpeg filter_complex
 src/render/     运行 ffmpeg；临时字幕/LUT 文件；单帧预览
 src/subtitles/  ASS 生成、SRT 读写
-src/tools/      27 个工具（MCP、CLI 和 Agent 共用）
+src/util/       base64、UTF-8 安全序列化、进度/取消钩子
+src/tools/      33 个工具（MCP、CLI 和 Agent 共用）
 src/cli/        命令行前端：每个工具一个子命令，项目状态存在 JSON 文件里
 src/agent/      自带 Agent：中立消息模型、curl/SSE HTTP、三种 provider、
                 权限层、工具箱、Agent 循环、系统提示、JSONL 会话、CLI
